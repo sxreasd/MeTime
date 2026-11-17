@@ -1,0 +1,6 @@
+{
+  "name": "MeTime",
+  "description": "MeTime — A tactile, mobile-first personal money tracker in Philippine Pesos with Piggy Bank savings jars, swipe-to-confirm entry, and spending analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
