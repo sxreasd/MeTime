@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, PanInfo, useDragControls } from 'motion/react';
 import {
   AlertTriangle,
@@ -15,7 +15,6 @@ import { useMoney } from '../context/MoneyContext';
 import { JAR_COLOR_STYLES, Jar, JarColorKey } from '../types/money';
 import { formatCurrency, triggerFeedback } from '../utils/format';
 import { AnimatedNumber } from './AnimatedNumber';
-import { AppBackground } from './AppBackground';
 
 interface PiggyBankProps {
   onBack: () => void;
@@ -23,6 +22,115 @@ interface PiggyBankProps {
 }
 
 const COLOR_KEYS: JarColorKey[] = ['yellow', 'green', 'blue', 'pink', 'purple', 'orange'];
+
+interface JarCardProps {
+  jar: Jar;
+  currency: string;
+  onOpenTransfer: (jar: Jar) => void;
+  onOpenEdit: (jar: Jar) => void;
+}
+
+const JarCard = memo(function JarCard({
+  jar,
+  currency,
+  onOpenTransfer,
+  onOpenEdit,
+}: JarCardProps) {
+  const style = JAR_COLOR_STYLES[jar.color] || JAR_COLOR_STYLES.yellow;
+  const progress =
+    jar.goal && jar.goal > 0
+      ? Math.min(100, Math.round((jar.balance / jar.goal) * 100))
+      : null;
+
+  return (
+    <motion.div
+      layout="position"
+      initial={{ opacity: 0, y: 14, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.94 }}
+      transition={{ type: 'spring', stiffness: 360, damping: 28 }}
+      style={{
+        backgroundColor: style.bg,
+        boxShadow: style.glow,
+      }}
+      className="relative flex min-h-[146px] flex-col justify-between overflow-hidden rounded-[24px] p-5"
+    >
+      {/* Signature Overlapping Translucent Circles */}
+      <div
+        aria-hidden="true"
+        style={{ backgroundColor: style.circleA }}
+        className="pointer-events-none absolute -right-12 -bottom-16 h-52 w-52 rounded-full"
+      />
+      <div
+        aria-hidden="true"
+        style={{ backgroundColor: style.circleB }}
+        className="pointer-events-none absolute -right-16 top-6 h-44 w-44 rounded-full"
+      />
+
+      {/* Top Row: Name + Balance */}
+      <div className="relative z-10 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3
+            style={{ color: style.text }}
+            className="truncate text-[18px] font-medium tracking-tight"
+          >
+            {jar.name}
+          </h3>
+          {jar.goal && jar.goal > 0 && (
+            <p style={{ color: style.subtext }} className="mt-1 text-[12px] font-medium tabular-nums">
+              Goal {formatCurrency(jar.goal, currency)} ({progress}%)
+            </p>
+          )}
+        </div>
+
+        <span style={{ color: style.text }} className="shrink-0">
+          <AnimatedNumber
+            value={jar.balance}
+            currency={currency}
+            className="text-[22px] font-bold tracking-tight"
+          />
+        </span>
+      </div>
+
+      {/* Optional Goal Bar (pure scaleX transform) */}
+      {progress !== null && (
+        <div className="relative z-10 mt-2 mb-1 h-1.5 w-full overflow-hidden rounded-full bg-black/10">
+          <motion.div
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: Math.max(0, Math.min(1, progress / 100)) }}
+            transition={{ type: 'spring', stiffness: 280, damping: 28 }}
+            className="h-full w-full origin-left rounded-full bg-white/80"
+          />
+        </div>
+      )}
+
+      {/* Bottom Left Buttons: + and Gear */}
+      <div className="relative z-10 mt-4 flex items-center gap-2.5">
+        <motion.button
+          type="button"
+          whileTap={{ scale: 0.92 }}
+          aria-label={`Move money in ${jar.name}`}
+          onClick={() => onOpenTransfer(jar)}
+          style={{ backgroundColor: style.btnBg, color: style.btnText }}
+          className="flex h-11 w-11 items-center justify-center rounded-full transition-opacity hover:opacity-90"
+        >
+          <Plus className="h-5 w-5 stroke-[2.2]" />
+        </motion.button>
+
+        <motion.button
+          type="button"
+          whileTap={{ scale: 0.92 }}
+          aria-label={`Settings for ${jar.name}`}
+          onClick={() => onOpenEdit(jar)}
+          style={{ backgroundColor: style.btnBg, color: style.btnText }}
+          className="flex h-11 w-11 items-center justify-center rounded-full transition-opacity hover:opacity-90"
+        >
+          <Settings className="h-[18px] w-[18px]" />
+        </motion.button>
+      </div>
+    </motion.div>
+  );
+});
 
 export function PiggyBank({ onBack, registerBackHandler }: PiggyBankProps) {
   const { jars, balance, totalPiggyBank, settings, createJar, updateJar, deleteJar, transferJarMoney } =
@@ -89,15 +197,18 @@ export function PiggyBank({ onBack, registerBackHandler }: PiggyBankProps) {
     setJarModalMode('create');
   };
 
-  const openEditModal = (jar: Jar) => {
-    triggerFeedback(settings.hapticsEnabled, 'tap');
-    setEditingJar(jar);
-    setJarName(jar.name);
-    setJarColor(jar.color);
-    setJarGoal(jar.goal ? String(jar.goal) : '');
-    setConfirmDelete(false);
-    setJarModalMode('edit');
-  };
+  const openEditModal = useCallback(
+    (jar: Jar) => {
+      triggerFeedback(settings.hapticsEnabled, 'tap');
+      setEditingJar(jar);
+      setJarName(jar.name);
+      setJarColor(jar.color);
+      setJarGoal(jar.goal ? String(jar.goal) : '');
+      setConfirmDelete(false);
+      setJarModalMode('edit');
+    },
+    [settings.hapticsEnabled]
+  );
 
   const handleSaveJar = (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,12 +232,15 @@ export function PiggyBank({ onBack, registerBackHandler }: PiggyBankProps) {
     setJarModalMode(null);
   };
 
-  const openTransferSheet = (jar: Jar) => {
-    triggerFeedback(settings.hapticsEnabled, 'tap');
-    setTransferJar(jar);
-    setTransferDir('deposit');
-    setTransferAmountStr('');
-  };
+  const openTransferSheet = useCallback(
+    (jar: Jar) => {
+      triggerFeedback(settings.hapticsEnabled, 'tap');
+      setTransferJar(jar);
+      setTransferDir('deposit');
+      setTransferAmountStr('');
+    },
+    [settings.hapticsEnabled]
+  );
 
   const transferAmount = useMemo(() => {
     const p = parseFloat(transferAmountStr);
@@ -174,9 +288,7 @@ export function PiggyBank({ onBack, registerBackHandler }: PiggyBankProps) {
     transferDir === 'withdraw' && transferJar !== null && transferAmount > transferJar.balance;
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden bg-[#05060D] text-white">
-      <AppBackground />
-
+    <div className="relative flex h-full w-full flex-col overflow-hidden bg-transparent text-white">
       {/* Top Header */}
       <header
         style={{ paddingTop: 'max(1.35rem, env(safe-area-inset-top))' }}
@@ -189,7 +301,7 @@ export function PiggyBank({ onBack, registerBackHandler }: PiggyBankProps) {
             triggerFeedback(settings.hapticsEnabled, 'tap');
             onBack();
           }}
-          className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.07] bg-[#1C2124]/85 text-white transition-transform hover:bg-[#242A2E] active:scale-95"
+          className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.07] bg-[#1C2124]/92 text-white transition-transform hover:bg-[#242A2E] active:scale-95"
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
@@ -204,7 +316,7 @@ export function PiggyBank({ onBack, registerBackHandler }: PiggyBankProps) {
               triggerFeedback(settings.hapticsEnabled, 'tap');
               setMenuOpen((o) => !o);
             }}
-            className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.07] bg-[#1C2124]/85 text-white transition-transform hover:bg-[#242A2E] active:scale-95"
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.07] bg-[#1C2124]/92 text-white transition-transform hover:bg-[#242A2E] active:scale-95"
           >
             <MoreHorizontal className="h-5 w-5" />
           </button>
@@ -215,7 +327,7 @@ export function PiggyBank({ onBack, registerBackHandler }: PiggyBankProps) {
                 initial={{ opacity: 0, y: -6, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -6, scale: 0.95 }}
-                className="absolute right-0 top-13 z-30 w-48 rounded-2xl border border-white/10 bg-[#1A1D21] p-1.5 shadow-2xl"
+                className="absolute right-0 top-13 z-30 w-48 rounded-2xl border border-white/10 bg-[#1A1D21] p-1.5 shadow-lg"
               >
                 <p className="px-3 py-1.5 text-[11px] font-medium text-[#8E959B]">
                   Total Saved: {formatCurrency(totalPiggyBank, settings.currency)}
@@ -265,12 +377,12 @@ export function PiggyBank({ onBack, registerBackHandler }: PiggyBankProps) {
       </div>
 
       {/* Jars List */}
-      <div className="no-scrollbar relative z-10 flex-1 overflow-y-auto px-6 pb-10">
+      <div className="no-scrollbar relative z-10 flex-1 touch-pan-y overflow-y-auto px-6 pb-10">
         {sortedJars.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mt-4 flex flex-col items-center rounded-[24px] border border-white/[0.06] bg-[#1A1D21]/80 px-6 py-12 text-center"
+            className="mt-4 flex flex-col items-center rounded-[24px] border border-white/[0.06] bg-[#1A1D21]/92 px-6 py-12 text-center"
           >
             <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.06] text-[#8E959B]">
               <PiggyIcon className="h-7 w-7" />
@@ -291,103 +403,15 @@ export function PiggyBank({ onBack, registerBackHandler }: PiggyBankProps) {
         ) : (
           <div className="space-y-4 pb-6">
             <AnimatePresence initial={false}>
-              {sortedJars.map((jar) => {
-                const style = JAR_COLOR_STYLES[jar.color] || JAR_COLOR_STYLES.yellow;
-                const progress =
-                  jar.goal && jar.goal > 0
-                    ? Math.min(100, Math.round((jar.balance / jar.goal) * 100))
-                    : null;
-
-                return (
-                  <motion.div
-                    key={jar.id}
-                    layout
-                    initial={{ opacity: 0, y: 14, scale: 0.97 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.94 }}
-                    transition={{ type: 'spring', stiffness: 360, damping: 28 }}
-                    style={{
-                      backgroundColor: style.bg,
-                      boxShadow: style.glow,
-                    }}
-                    className="relative flex min-h-[146px] flex-col justify-between overflow-hidden rounded-[24px] p-5"
-                  >
-                    {/* Signature Overlapping Translucent Circles */}
-                    <div
-                      aria-hidden="true"
-                      style={{ backgroundColor: style.circleA }}
-                      className="pointer-events-none absolute -right-12 -bottom-16 h-52 w-52 rounded-full"
-                    />
-                    <div
-                      aria-hidden="true"
-                      style={{ backgroundColor: style.circleB }}
-                      className="pointer-events-none absolute -right-16 top-6 h-44 w-44 rounded-full"
-                    />
-
-                    {/* Top Row: Name + Balance */}
-                    <div className="relative z-10 flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <h3
-                          style={{ color: style.text }}
-                          className="truncate text-[18px] font-medium tracking-tight"
-                        >
-                          {jar.name}
-                        </h3>
-                        {jar.goal && jar.goal > 0 && (
-                          <p style={{ color: style.subtext }} className="mt-1 text-[12px] font-medium tabular-nums">
-                            Goal {formatCurrency(jar.goal, settings.currency)} ({progress}%)
-                          </p>
-                        )}
-                      </div>
-
-                      <span style={{ color: style.text }} className="shrink-0">
-                        <AnimatedNumber
-                          value={jar.balance}
-                          currency={settings.currency}
-                          className="text-[22px] font-bold tracking-tight"
-                        />
-                      </span>
-                    </div>
-
-                    {/* Optional Goal Bar */}
-                    {progress !== null && (
-                      <div className="relative z-10 mt-2 mb-1 h-1.5 w-full overflow-hidden rounded-full bg-black/10">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${progress}%` }}
-                          transition={{ type: 'spring', stiffness: 280, damping: 28 }}
-                          className="h-full rounded-full bg-white/80"
-                        />
-                      </div>
-                    )}
-
-                    {/* Bottom Left Buttons: + and Gear */}
-                    <div className="relative z-10 mt-4 flex items-center gap-2.5">
-                      <motion.button
-                        type="button"
-                        whileTap={{ scale: 0.92 }}
-                        aria-label={`Move money in ${jar.name}`}
-                        onClick={() => openTransferSheet(jar)}
-                        style={{ backgroundColor: style.btnBg, color: style.btnText }}
-                        className="flex h-11 w-11 items-center justify-center rounded-full backdrop-blur-xs transition-opacity hover:opacity-90"
-                      >
-                        <Plus className="h-5 w-5 stroke-[2.2]" />
-                      </motion.button>
-
-                      <motion.button
-                        type="button"
-                        whileTap={{ scale: 0.92 }}
-                        aria-label={`Settings for ${jar.name}`}
-                        onClick={() => openEditModal(jar)}
-                        style={{ backgroundColor: style.btnBg, color: style.btnText }}
-                        className="flex h-11 w-11 items-center justify-center rounded-full backdrop-blur-xs transition-opacity hover:opacity-90"
-                      >
-                        <Settings className="h-[18px] w-[18px]" />
-                      </motion.button>
-                    </div>
-                  </motion.div>
-                );
-              })}
+              {sortedJars.map((jar) => (
+                <JarCard
+                  key={jar.id}
+                  jar={jar}
+                  currency={settings.currency}
+                  onOpenTransfer={openTransferSheet}
+                  onOpenEdit={openEditModal}
+                />
+              ))}
             </AnimatePresence>
           </div>
         )}
@@ -402,7 +426,7 @@ export function PiggyBank({ onBack, registerBackHandler }: PiggyBankProps) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setJarModalMode(null)}
-              className="absolute inset-0 bg-black/65 backdrop-blur-[2px]"
+              className="absolute inset-0 bg-black/70"
             />
             <div className="pointer-events-none relative z-10 flex h-full w-full items-end overflow-hidden min-[501px]:max-w-[420px] min-[501px]:rounded-[38px]">
               <motion.form
@@ -425,7 +449,7 @@ export function PiggyBank({ onBack, registerBackHandler }: PiggyBankProps) {
                   }
                 }}
                 style={{ paddingBottom: 'calc(1.75rem + env(safe-area-inset-bottom))' }}
-                className="pointer-events-auto flex max-h-[88dvh] w-full flex-col rounded-t-[32px] border-t border-white/10 bg-[#14181B] px-6 pt-3 text-white shadow-2xl"
+                className="pointer-events-auto flex max-h-[88dvh] w-full flex-col rounded-t-[32px] border-t border-white/10 bg-[#14181B] px-6 pt-3 text-white shadow-2xl will-change-transform"
               >
                 <div
                   onPointerDown={(e) => jarModalDragControls.start(e)}
@@ -595,7 +619,7 @@ export function PiggyBank({ onBack, registerBackHandler }: PiggyBankProps) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setTransferJar(null)}
-              className="absolute inset-0 bg-black/65 backdrop-blur-[2px]"
+              className="absolute inset-0 bg-black/70"
             />
             <div className="pointer-events-none relative z-10 flex h-full w-full items-end overflow-hidden min-[501px]:max-w-[420px] min-[501px]:rounded-[38px]">
               <motion.div
@@ -617,7 +641,7 @@ export function PiggyBank({ onBack, registerBackHandler }: PiggyBankProps) {
                   }
                 }}
                 style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}
-                className="pointer-events-auto w-full rounded-t-[32px] bg-white px-5 pt-3 text-[#111827] shadow-2xl"
+                className="pointer-events-auto w-full rounded-t-[32px] bg-white px-5 pt-3 text-[#111827] shadow-2xl will-change-transform"
               >
                 <div
                   onPointerDown={(e) => {

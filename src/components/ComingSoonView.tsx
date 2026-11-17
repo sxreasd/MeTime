@@ -30,7 +30,7 @@ export function ComingSoonView({ variant }: ComingSoonViewProps) {
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-          className="flex w-full flex-col items-center rounded-[28px] border border-white/[0.07] bg-[#1A1D21]/80 px-6 py-10 backdrop-blur-md"
+          className="flex w-full flex-col items-center rounded-[28px] border border-white/[0.07] bg-[#1A1D21]/92 px-6 py-10"
         >
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/[0.08] bg-[#1C2124] text-[#6EEFA2]">
             <Icon className="h-6 w-6" />

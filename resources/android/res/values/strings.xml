@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MeTime</string>
+    <string name="title_activity_main">MeTime</string>
+    <string name="package_name">com.metime.app</string>
+    <string name="custom_url_scheme">com.metime.app</string>
+</resources>

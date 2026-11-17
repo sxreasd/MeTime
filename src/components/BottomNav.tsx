@@ -61,7 +61,7 @@ export function BottomNav({
     >
       <nav
         aria-label="Primary navigation"
-        className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-white/[0.07] bg-[#181B20] p-1.5 shadow-[0_14px_34px_rgba(0,0,0,0.45)]"
+        className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-white/[0.07] bg-[#181B20] p-1.5 shadow-lg"
       >
         {items.map((item) => {
           const Icon = item.icon;

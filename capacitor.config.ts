@@ -1,6 +1,6 @@
 const config = {
   appId: 'com.metime.app',
-  appName: 'Money App',
+  appName: 'MeTime',
   webDir: 'dist',
   server: {
     androidScheme: 'https',

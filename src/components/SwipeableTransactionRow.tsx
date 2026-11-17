@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { animate, motion, PanInfo, useMotionValue, useTransform } from 'motion/react';
 import { Transaction } from '../types/money';
 import { formatTimeShort, formatTxRowAmount, triggerFeedback } from '../utils/format';
@@ -15,7 +15,7 @@ interface SwipeableTransactionRowProps {
 
 const DELETE_BTN_WIDTH = 90;
 
-export function SwipeableTransactionRow({
+export const SwipeableTransactionRow = memo(function SwipeableTransactionRow({
   tx,
   currency,
   hapticsEnabled,
@@ -24,13 +24,12 @@ export function SwipeableTransactionRow({
   onDelete,
   dotColor = '#10B981',
 }: SwipeableTransactionRowProps) {
-  // revealPx tracks how much of the Delete button is revealed on the right (0 .. DELETE_BTN_WIDTH)
+  // Pure transform/opacity motion values — zero width/height layout reflow per frame
   const revealPx = useMotionValue(0);
-  const clampedWidth = useTransform(revealPx, (v) => Math.max(0, v));
-  const rowBg = useTransform(revealPx, [0, DELETE_BTN_WIDTH], ['#FFFFFF', '#FEF2F2']);
-  const borderColor = useTransform(revealPx, [0, DELETE_BTN_WIDTH], ['#F1F5F9', '#FECACA']);
+  const tintOpacity = useTransform(revealPx, [0, DELETE_BTN_WIDTH], [0, 1]);
+  const amountX = useTransform(revealPx, (v) => -Math.max(0, v));
+  const deleteBtnX = useTransform(revealPx, (v) => DELETE_BTN_WIDTH - Math.max(0, v));
   const deleteOpacity = useTransform(revealPx, [12, 52], [0, 1]);
-  const deleteScale = useTransform(revealPx, [12, DELETE_BTN_WIDTH], [0.88, 1]);
 
   const isDraggingRef = useRef(false);
   const panStartRevealRef = useRef(0);
@@ -56,7 +55,6 @@ export function SwipeableTransactionRow({
   };
 
   const handlePan = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-    // Only close another open row once user clearly drags horizontally left
     if (!closedOthersRef.current && !isRevealed && info.offset.x < -8) {
       closedOthersRef.current = true;
       onRevealChange(null);
@@ -102,53 +100,57 @@ export function SwipeableTransactionRow({
 
   return (
     <motion.div
-      layout
-      initial={{ opacity: 0, y: -8 }}
+      layout="position"
+      initial={{ opacity: 0, y: -6 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{
-        opacity: 0,
-        height: 0,
-        marginTop: 0,
-        marginBottom: 0,
-        paddingTop: 0,
-        paddingBottom: 0,
-        transition: { duration: 0.22, ease: [0.16, 1, 0.3, 1] },
-      }}
-      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-      className="overflow-hidden px-4 py-1"
+      exit={{ opacity: 0, scale: 0.94, transition: { duration: 0.16, ease: 'easeOut' } }}
+      transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+      className="px-4 py-1"
     >
       <motion.div
-        style={{ borderColor }}
         onPanStart={handlePanStart}
         onPan={handlePan}
         onPanEnd={handlePanEnd}
         onClick={() => {
           if (isRevealed) onRevealChange(null);
         }}
-        className="flex cursor-grab touch-pan-y items-stretch overflow-hidden rounded-[16px] border select-none active:cursor-grabbing"
+        className="relative flex cursor-grab touch-pan-y items-center justify-between gap-2.5 overflow-hidden rounded-[16px] border border-[#F1F5F9] bg-white px-3.5 py-3 select-none active:cursor-grabbing"
       >
-        {/* Content area shrinks/reflows proportionally instead of sliding off-screen */}
+        {/* Pure opacity tint & soft red border highlight while swiped */}
         <motion.div
-          style={{ backgroundColor: rowBg }}
-          className="flex min-w-0 flex-1 items-center justify-between gap-2.5 px-3.5 py-3"
-        >
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <span
-              className="h-2.5 w-2.5 shrink-0 rounded-full"
-              style={{ backgroundColor: dotColor }}
-            />
-            <div className="min-w-0 flex-1">
-              <p className="line-clamp-2 break-words text-[15px] leading-snug font-medium text-[#111827]">
-                {primaryText}
-              </p>
-              <p className="mt-0.5 truncate text-[12px] text-gray-400">
-                {metaText}
-              </p>
-            </div>
-          </div>
+          aria-hidden="true"
+          style={{ opacity: tintOpacity }}
+          className="pointer-events-none absolute inset-0 rounded-[16px] border border-[#FECACA] bg-[#FEF2F2]"
+        />
 
+        {/* Stationary Left Details (always stay on screen) */}
+        <div className="relative z-10 flex min-w-0 flex-1 items-center gap-3">
           <span
-            className={`shrink-0 text-[15px] tabular-nums ${
+            className="h-2.5 w-2.5 shrink-0 rounded-full"
+            style={{ backgroundColor: dotColor }}
+          />
+          <div className="min-w-0 flex-1">
+            <p className="line-clamp-2 break-words text-[15px] leading-snug font-medium text-[#111827]">
+              {primaryText}
+            </p>
+            <p className="mt-0.5 truncate text-[12px] text-gray-400">
+              {metaText}
+            </p>
+          </div>
+        </div>
+
+        {/* Amount translates smoothly via GPU transform to stay clear of the sliding Delete button */}
+        <motion.div
+          style={{ x: amountX }}
+          className="relative z-10 shrink-0 rounded-l-lg bg-white pl-2"
+        >
+          <motion.span
+            aria-hidden="true"
+            style={{ opacity: tintOpacity }}
+            className="pointer-events-none absolute inset-0 rounded-l-lg bg-[#FEF2F2]"
+          />
+          <span
+            className={`relative z-10 text-[15px] tabular-nums ${
               isPositive ? 'font-bold text-[#16A34A]' : 'font-semibold text-[#111827]'
             }`}
           >
@@ -156,26 +158,21 @@ export function SwipeableTransactionRow({
           </span>
         </motion.div>
 
-        {/* Right Delete slot grows dynamically so outer right corners match rounded-[16px] card */}
-        <motion.div
-          style={{ width: clampedWidth }}
-          className="shrink-0 overflow-hidden bg-[#EF4444]"
+        {/* Delete Button slides in from right via pure transform: translateX */}
+        <motion.button
+          type="button"
+          style={{ x: deleteBtnX, opacity: deleteOpacity }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            triggerFeedback(hapticsEnabled, 'confirm');
+            onDelete(tx.id);
+          }}
+          className="absolute inset-y-0 right-0 z-20 flex w-[90px] items-center justify-center bg-[#EF4444] text-[13px] font-semibold tracking-tight whitespace-nowrap text-white active:bg-[#DC2626]"
         >
-          <motion.button
-            type="button"
-            style={{ opacity: deleteOpacity, scale: deleteScale }}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              triggerFeedback(hapticsEnabled, 'confirm');
-              onDelete(tx.id);
-            }}
-            className="flex h-full w-[90px] items-center justify-center whitespace-nowrap text-[13px] font-semibold tracking-tight text-white active:bg-[#DC2626]"
-          >
-            Delete
-          </motion.button>
-        </motion.div>
+          Delete
+        </motion.button>
       </motion.div>
     </motion.div>
   );
-}
+});

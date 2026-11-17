@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowDown, ArrowUp, ChevronLeft, MoreHorizontal } from 'lucide-react';
 import { useMoney } from '../context/MoneyContext';
 import { AnalyticsPeriod } from '../types/money';
 import { computeAnalytics, formatCurrency, triggerFeedback } from '../utils/format';
 import { AnimatedNumber } from './AnimatedNumber';
-import { AppBackground } from './AppBackground';
 
 interface AnalyticsProps {
   onBack: () => void;
@@ -51,6 +50,200 @@ function buildSmoothSpline(coords: { x: number; y: number }[]): {
   return { linePath: d, areaPath, baselineY };
 }
 
+interface AnalyticsChartProps {
+  points: { label: string; value: number; fullLabel: string }[];
+  coords: { x: number; y: number }[];
+  linePath: string;
+  areaPath: string;
+  baselineY: number;
+  safeIndex: number;
+  period: AnalyticsPeriod;
+  currency: string;
+  onSelectIndex: (idx: number) => void;
+}
+
+const SVG_WIDTH = 340;
+const PAD_X = 14;
+
+const AnalyticsChart = memo(function AnalyticsChart({
+  points,
+  coords,
+  linePath,
+  areaPath,
+  baselineY,
+  safeIndex,
+  period,
+  currency,
+  onSelectIndex,
+}: AnalyticsChartProps) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const activePoint = points[safeIndex] || { label: '', value: 0, fullLabel: '' };
+  const activeCoord = coords[safeIndex] || { x: SVG_WIDTH / 2, y: 118 };
+
+  const handleScrub = (clientX: number) => {
+    if (!svgRef.current || points.length <= 1) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const relX = ((clientX - rect.left) / rect.width) * SVG_WIDTH;
+    const clamped = Math.min(Math.max(relX, PAD_X), SVG_WIDTH - PAD_X);
+    const ratio = (clamped - PAD_X) / (SVG_WIDTH - PAD_X * 2);
+    const idx = Math.round(ratio * (points.length - 1));
+    if (idx !== safeIndex) {
+      onSelectIndex(idx);
+    }
+  };
+
+  const shouldShowXLabel = (idx: number, total: number) => {
+    if (period !== 'month') return true;
+    if (idx === safeIndex) return true;
+    if (idx === 0 || idx === total - 1) return true;
+    return (idx + 1) % 5 === 0 && Math.abs(idx - safeIndex) > 1;
+  };
+
+  const labelText = formatCurrency(activePoint.value, currency);
+  const pillWidth = Math.max(66, labelText.length * 8.2 + 22);
+  const clampedCenter = Math.min(
+    Math.max(activeCoord.x, pillWidth / 2 + 4),
+    SVG_WIDTH - pillWidth / 2 - 4
+  );
+  const bubbleY = Math.max(4, activeCoord.y - 42);
+  const pointerOffset = activeCoord.x - clampedCenter;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.22, ease: 'easeOut' }}
+      className="mt-4 select-none"
+    >
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${SVG_WIDTH} 154`}
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          handleScrub(e.clientX);
+        }}
+        onPointerMove={(e) => {
+          if (e.buttons > 0 || e.pointerType === 'touch') {
+            handleScrub(e.clientX);
+          }
+        }}
+        className="h-[168px] w-full cursor-crosshair touch-pan-y overflow-visible"
+      >
+        <defs>
+          <linearGradient id="purpleAreaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#8B7CF6" stopOpacity="0.34" />
+            <stop offset="100%" stopColor="#8B7CF6" stopOpacity="0.01" />
+          </linearGradient>
+          <linearGradient id="activeColGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#4ADE80" stopOpacity="0.06" />
+            <stop offset="50%" stopColor="#6EEFA2" stopOpacity="0.16" />
+            <stop offset="100%" stopColor="#6EEFA2" stopOpacity="0.04" />
+          </linearGradient>
+        </defs>
+
+        {/* Horizontal Dashed Gridlines */}
+        {[54, 86, 118].map((gy) => (
+          <line
+            key={gy}
+            x1={PAD_X}
+            y1={gy}
+            x2={SVG_WIDTH - PAD_X}
+            y2={gy}
+            stroke="rgba(255,255,255,0.06)"
+            strokeDasharray="3 4"
+            strokeWidth="1"
+          />
+        ))}
+
+        {/* Highlighted Vertical Band (transform only) */}
+        <motion.rect
+          animate={{ x: activeCoord.x - 16 }}
+          transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+          y={36}
+          width={32}
+          height={baselineY - 36}
+          rx={10}
+          fill="url(#activeColGrad)"
+        />
+
+        {/* Area Fill & Spline Stroke */}
+        {areaPath && <path d={areaPath} fill="url(#purpleAreaGrad)" />}
+        {linePath && (
+          <path
+            d={linePath}
+            fill="none"
+            stroke="#8B7CF6"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+
+        {/* Active Dot (crisp outer halo instead of Gaussian blur filter) */}
+        <motion.g
+          animate={{ x: activeCoord.x, y: activeCoord.y }}
+          transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+        >
+          <circle r="10" fill="#4ADE80" fillOpacity="0.2" />
+          <circle r="4.5" fill="#FFFFFF" stroke="#4ADE80" strokeWidth="2.2" />
+        </motion.g>
+
+        {/* Green Tooltip Bubble */}
+        <motion.g
+          animate={{ x: clampedCenter, y: bubbleY }}
+          transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+        >
+          <rect
+            x={-pillWidth / 2}
+            y={0}
+            width={pillWidth}
+            height={26}
+            rx={13}
+            fill="#5EEB8D"
+          />
+          <polygon
+            points={`${pointerOffset - 5},25 ${pointerOffset + 5},25 ${pointerOffset},31`}
+            fill="#5EEB8D"
+          />
+          <text
+            x={0}
+            y={17}
+            textAnchor="middle"
+            fill="#0B0F10"
+            fontSize="12"
+            fontWeight="700"
+            className="tabular-nums"
+          >
+            {labelText}
+          </text>
+        </motion.g>
+
+        {/* X-Axis Labels */}
+        {points.map((pt, idx) => {
+          if (!shouldShowXLabel(idx, points.length)) return null;
+          const xPos = coords[idx]?.x ?? PAD_X;
+          const isActive = idx === safeIndex;
+          return (
+            <text
+              key={`${pt.label}-${idx}`}
+              x={xPos}
+              y={148}
+              textAnchor="middle"
+              fill={isActive ? '#4ADE80' : '#6B7280'}
+              fontSize="11"
+              fontWeight={isActive ? '700' : '500'}
+              className="cursor-pointer transition-colors"
+              onClick={() => onSelectIndex(idx)}
+            >
+              {pt.label}
+            </text>
+          );
+        })}
+      </svg>
+    </motion.div>
+  );
+});
+
 export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
   const {
     transactions,
@@ -78,24 +271,17 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
     return () => registerBackHandler(null);
   }, [menuOpen, registerBackHandler]);
 
-  const svgRef = useRef<SVGSVGElement>(null);
-
   const snapshot = useMemo(
     () => computeAnalytics(transactions, period, spendCategories),
     [transactions, period, spendCategories]
   );
 
-  // Sync default selected index when period changes
   useEffect(() => {
     setSelectedIndex(snapshot.defaultSelectedIndex);
   }, [period, snapshot.defaultSelectedIndex]);
 
   const safeIndex = Math.min(Math.max(0, selectedIndex), Math.max(0, snapshot.points.length - 1));
-  const activePoint = snapshot.points[safeIndex] || { label: '', value: 0, fullLabel: '' };
 
-  // SVG Coordinate Space: width 340, height 150
-  const svgWidth = 340;
-  const padX = 14;
   const topY = 44;
   const bottomY = 122;
 
@@ -103,9 +289,9 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
     const pts = snapshot.points;
     if (pts.length === 0) return [];
     const maxVal = Math.max(...pts.map((p) => p.value), 0);
-    const spanX = svgWidth - padX * 2;
+    const spanX = SVG_WIDTH - PAD_X * 2;
     return pts.map((p, i) => {
-      const x = pts.length === 1 ? svgWidth / 2 : padX + (i / (pts.length - 1)) * spanX;
+      const x = pts.length === 1 ? SVG_WIDTH / 2 : PAD_X + (i / (pts.length - 1)) * spanX;
       const ratio = maxVal > 0 ? p.value / maxVal : 0;
       const y = maxVal > 0 ? bottomY - ratio * (bottomY - topY) : bottomY - 4;
       return { x, y };
@@ -113,19 +299,10 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
   }, [snapshot.points]);
 
   const { linePath, areaPath, baselineY } = useMemo(() => buildSmoothSpline(coords), [coords]);
-  const activeCoord = coords[safeIndex] || { x: svgWidth / 2, y: bottomY - 4 };
 
-  const handleScrub = (clientX: number) => {
-    if (!svgRef.current || snapshot.points.length <= 1) return;
-    const rect = svgRef.current.getBoundingClientRect();
-    const relX = ((clientX - rect.left) / rect.width) * svgWidth;
-    const clamped = Math.min(Math.max(relX, padX), svgWidth - padX);
-    const ratio = (clamped - padX) / (svgWidth - padX * 2);
-    const idx = Math.round(ratio * (snapshot.points.length - 1));
-    if (idx !== safeIndex) {
-      setSelectedIndex(idx);
-    }
-  };
+  const handleSelectIndex = useCallback((idx: number) => {
+    setSelectedIndex(idx);
+  }, []);
 
   const isLowerOrEqual = snapshot.deltaPercent <= 0;
   const absDelta = Math.abs(Math.round(snapshot.deltaPercent * 10) / 10);
@@ -136,18 +313,8 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
     return nonZero.length > 0 ? nonZero : snapshot.breakdown;
   }, [snapshot.breakdown, showEmptyCats]);
 
-  // Helper to decide which x-axis labels show on Month view so 30 days don't collide
-  const shouldShowXLabel = (idx: number, total: number) => {
-    if (period !== 'month') return true;
-    if (idx === safeIndex) return true;
-    if (idx === 0 || idx === total - 1) return true;
-    return (idx + 1) % 5 === 0 && Math.abs(idx - safeIndex) > 1;
-  };
-
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden bg-[#05060D] text-white">
-      <AppBackground />
-
+    <div className="relative flex h-full w-full flex-col overflow-hidden bg-transparent text-white">
       {/* Header */}
       <header
         style={{ paddingTop: 'max(1.35rem, env(safe-area-inset-top))' }}
@@ -160,7 +327,7 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
             triggerFeedback(settings.hapticsEnabled, 'tap');
             onBack();
           }}
-          className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.07] bg-[#1C2124]/85 text-white transition-transform hover:bg-[#242A2E] active:scale-95"
+          className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.07] bg-[#1C2124]/92 text-white transition-transform hover:bg-[#242A2E] active:scale-95"
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
@@ -175,7 +342,7 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
               triggerFeedback(settings.hapticsEnabled, 'tap');
               setMenuOpen((o) => !o);
             }}
-            className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.07] bg-[#1C2124]/85 text-white transition-transform hover:bg-[#242A2E] active:scale-95"
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.07] bg-[#1C2124]/92 text-white transition-transform hover:bg-[#242A2E] active:scale-95"
           >
             <MoreHorizontal className="h-5 w-5" />
           </button>
@@ -186,7 +353,7 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
                 initial={{ opacity: 0, y: -6, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -6, scale: 0.95 }}
-                className="absolute right-0 top-13 z-30 w-52 rounded-2xl border border-white/10 bg-[#1A1D21] p-1.5 shadow-2xl"
+                className="absolute right-0 top-13 z-30 w-52 rounded-2xl border border-white/10 bg-[#1A1D21] p-1.5 shadow-lg"
               >
                 <button
                   type="button"
@@ -205,7 +372,7 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
       </header>
 
       {/* Scrollable Analytics Body */}
-      <div className="no-scrollbar relative z-10 flex-1 overflow-y-auto px-6 pb-8">
+      <div className="no-scrollbar relative z-10 flex-1 touch-pan-y overflow-y-auto px-6 pb-8">
         {/* Segmented Period Control: Today | Week | Month */}
         <div className="mt-2 flex justify-center">
           <div className="inline-flex rounded-full border border-white/[0.06] bg-[#1A1D21] p-1">
@@ -270,154 +437,18 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
           </div>
         </div>
 
-        {/* Smooth Interactive Area Chart */}
-        <div className="mt-4 select-none">
-          <svg
-            ref={svgRef}
-            viewBox={`0 0 ${svgWidth} 154`}
-            onPointerDown={(e) => {
-              e.currentTarget.setPointerCapture(e.pointerId);
-              handleScrub(e.clientX);
-            }}
-            onPointerMove={(e) => {
-              if (e.buttons > 0 || e.pointerType === 'touch') {
-                handleScrub(e.clientX);
-              }
-            }}
-            className="h-[168px] w-full touch-pan-y cursor-crosshair overflow-visible"
-          >
-            <defs>
-              <linearGradient id="purpleAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#8B7CF6" stopOpacity="0.34" />
-                <stop offset="100%" stopColor="#8B7CF6" stopOpacity="0.01" />
-              </linearGradient>
-              <linearGradient id="activeColGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#4ADE80" stopOpacity="0.06" />
-                <stop offset="50%" stopColor="#6EEFA2" stopOpacity="0.16" />
-                <stop offset="100%" stopColor="#6EEFA2" stopOpacity="0.04" />
-              </linearGradient>
-              <filter id="dotGlow" x="-60%" y="-60%" width="220%" height="220%">
-                <feGaussianBlur stdDeviation="3.5" result="blur" />
-                <feMerge>
-                  <feMergeNode in="blur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-            </defs>
-
-            {/* Horizontal Dashed Gridlines */}
-            {[54, 86, 118].map((gy) => (
-              <line
-                key={gy}
-                x1={padX}
-                y1={gy}
-                x2={svgWidth - padX}
-                y2={gy}
-                stroke="rgba(255,255,255,0.06)"
-                strokeDasharray="3 4"
-                strokeWidth="1"
-              />
-            ))}
-
-            {/* Highlighted Vertical Band */}
-            <motion.rect
-              animate={{ x: activeCoord.x - 16 }}
-              transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-              y={36}
-              width={32}
-              height={baselineY - 36}
-              rx={10}
-              fill="url(#activeColGrad)"
-            />
-
-            {/* Area Fill & Spline Stroke */}
-            {areaPath && <path d={areaPath} fill="url(#purpleAreaGrad)" />}
-            {linePath && (
-              <path
-                d={linePath}
-                fill="none"
-                stroke="#8B7CF6"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            )}
-
-            {/* Active Glowing Point */}
-            <motion.g
-              animate={{ x: activeCoord.x, y: activeCoord.y }}
-              transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-            >
-              <circle r="9" fill="#4ADE80" fillOpacity="0.22" />
-              <circle r="4.5" fill="#FFFFFF" stroke="#4ADE80" strokeWidth="2.2" filter="url(#dotGlow)" />
-            </motion.g>
-
-            {/* Green Tooltip Bubble */}
-            {(() => {
-              const labelText = formatCurrency(activePoint.value, settings.currency);
-              const pillWidth = Math.max(66, labelText.length * 8.2 + 22);
-              const clampedCenter = Math.min(
-                Math.max(activeCoord.x, pillWidth / 2 + 4),
-                svgWidth - pillWidth / 2 - 4
-              );
-              const bubbleY = Math.max(4, activeCoord.y - 42);
-              const pointerOffset = activeCoord.x - clampedCenter;
-
-              return (
-                <motion.g
-                  animate={{ x: clampedCenter, y: bubbleY }}
-                  transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-                >
-                  <rect
-                    x={-pillWidth / 2}
-                    y={0}
-                    width={pillWidth}
-                    height={26}
-                    rx={13}
-                    fill="#5EEB8D"
-                  />
-                  <polygon
-                    points={`${pointerOffset - 5},25 ${pointerOffset + 5},25 ${pointerOffset},31`}
-                    fill="#5EEB8D"
-                  />
-                  <text
-                    x={0}
-                    y={17}
-                    textAnchor="middle"
-                    fill="#0B0F10"
-                    fontSize="12"
-                    fontWeight="700"
-                    className="tabular-nums"
-                  >
-                    {labelText}
-                  </text>
-                </motion.g>
-              );
-            })()}
-
-            {/* X-Axis Labels */}
-            {snapshot.points.map((pt, idx) => {
-              if (!shouldShowXLabel(idx, snapshot.points.length)) return null;
-              const xPos = coords[idx]?.x ?? padX;
-              const isActive = idx === safeIndex;
-              return (
-                <text
-                  key={`${pt.label}-${idx}`}
-                  x={xPos}
-                  y={148}
-                  textAnchor="middle"
-                  fill={isActive ? '#4ADE80' : '#6B7280'}
-                  fontSize="11"
-                  fontWeight={isActive ? '700' : '500'}
-                  className="cursor-pointer transition-colors"
-                  onClick={() => setSelectedIndex(idx)}
-                >
-                  {pt.label}
-                </text>
-              );
-            })}
-          </svg>
-        </div>
+        {/* Smooth Interactive Area Chart (memoized) */}
+        <AnalyticsChart
+          points={snapshot.points}
+          coords={coords}
+          linePath={linePath}
+          areaPath={areaPath}
+          baselineY={baselineY}
+          safeIndex={safeIndex}
+          period={period}
+          currency={settings.currency}
+          onSelectIndex={handleSelectIndex}
+        />
 
         {/* Three Period Summary Cards: Today / This Week / This Month */}
         <div className="mt-3 grid grid-cols-3 gap-2.5">
@@ -438,7 +469,7 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
                 className={`rounded-[20px] border p-3.5 text-left transition-colors active:scale-[0.98] ${
                   active
                     ? 'border-white/20 bg-[#20252B]'
-                    : 'border-white/[0.06] bg-[#1A1D21]/85 hover:bg-[#1F2328]'
+                    : 'border-white/[0.06] bg-[#1A1D21]/92 hover:bg-[#1F2328]'
                 }`}
               >
                 <span className="block truncate text-[11px] font-medium text-[#8E959B]">
@@ -455,7 +486,7 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
         </div>
 
         {/* Where Your Money Goes — By Category */}
-        <div className="mt-4 rounded-[24px] border border-white/[0.06] bg-[#1A1D21]/85 p-5">
+        <div className="mt-4 rounded-[24px] border border-white/[0.06] bg-[#1A1D21]/92 p-5">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-[15px] font-bold tracking-tight text-white">
               Where Your Money Goes
@@ -482,13 +513,13 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
                   </div>
                 </div>
 
-                {/* Progress Bar */}
+                {/* Progress Bar (pure scaleX transform, zero width animation) */}
                 <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.07]">
                   <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${cat.percentage}%` }}
+                    initial={{ scaleX: 0 }}
+                    animate={{ scaleX: Math.max(0, Math.min(1, cat.percentage / 100)) }}
                     transition={{ type: 'spring', stiffness: 260, damping: 28 }}
-                    className="h-full rounded-full"
+                    className="h-full w-full origin-left rounded-full"
                     style={{ backgroundColor: cat.color }}
                   />
                 </div>

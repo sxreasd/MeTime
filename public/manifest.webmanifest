@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Money App",
-  "short_name": "Money App",
-  "description": "Personal money tracker in Philippine Pesos with Piggy Bank savings jars and spending analytics.",
+  "name": "MeTime",
+  "short_name": "MeTime",
+  "description": "MeTime — Personal money tracker in Philippine Pesos with Piggy Bank savings jars and spending analytics.",
   "start_url": "/",
   "scope": "/",
   "display": "fullscreen",

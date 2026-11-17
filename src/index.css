@@ -19,50 +19,13 @@
     background-color: #C85C5C;
     color: #ffffff;
     overflow: hidden;
+    overscroll-behavior: none;
   }
 
   button,
   [role='button'],
   a {
     touch-action: manipulation;
-  }
-}
-
-@keyframes starburst-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes starburst-twinkle {
-  0%,
-  100% {
-    opacity: 0.78;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-.animate-starburst-slow {
-  animation:
-    starburst-spin 120s linear infinite,
-    starburst-twinkle 11s ease-in-out infinite;
-}
-
-.animate-starburst-reverse {
-  animation:
-    starburst-spin 135s linear infinite reverse,
-    starburst-twinkle 14s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .animate-starburst-slow,
-  .animate-starburst-reverse {
-    animation: none;
   }
 }
 

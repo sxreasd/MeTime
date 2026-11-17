@@ -251,7 +251,7 @@ export function EntrySheet({
             onClick={() => {
               if (!isConfirming) onClose();
             }}
-            className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"
+            className="absolute inset-0 bg-black/65"
           />
 
           {/* Phone-contained bottom sheet on >500px, edge-to-edge on phones */}
@@ -273,7 +273,7 @@ export function EntrySheet({
               dragSnapToOrigin
               onDragEnd={handleSheetDragEnd}
               style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}
-              className="pointer-events-auto relative flex max-h-[92%] w-full flex-col rounded-t-[32px] bg-white px-5 pt-3 text-[#111827] shadow-[0_-16px_50px_rgba(0,0,0,0.35)]"
+              className="pointer-events-auto relative flex max-h-[92%] w-full flex-col rounded-t-[32px] bg-white px-5 pt-3 text-[#111827] shadow-2xl will-change-transform"
             >
               {/* Drag Handle + Mode Toggle Header (vertical drag zone) */}
               <div
@@ -318,15 +318,15 @@ export function EntrySheet({
                 </div>
               </div>
 
-              {/* Over-balance Warning Banner (theme-matched) */}
+              {/* Over-balance Warning Banner (transform + opacity only) */}
               <AnimatePresence initial={false}>
                 {exceedsBalance && (
                   <motion.div
-                    initial={{ opacity: 0, height: 0, y: -6 }}
-                    animate={{ opacity: 1, height: 'auto', y: 0 }}
-                    exit={{ opacity: 0, height: 0, y: -6 }}
-                    transition={{ type: 'spring', stiffness: 460, damping: 34 }}
-                    className="overflow-hidden px-1"
+                    initial={{ opacity: 0, y: -4, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -4, scale: 0.96 }}
+                    transition={{ duration: 0.14, ease: 'easeOut' }}
+                    className="px-1"
                   >
                     <div className="mt-1 flex items-center justify-center gap-2 rounded-2xl border border-red-200/80 bg-red-50/90 px-3.5 py-2 text-[12px] font-medium text-red-700">
                       <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-500" />
@@ -353,9 +353,9 @@ export function EntrySheet({
                       opacity: numericAmount > 0 ? greenOpacity : 0,
                       scale: numericAmount > 0 ? greenScale : 0.92,
                       x: numericAmount > 0 ? greenX : 0,
-                      boxShadow: '0 16px 40px rgba(30, 216, 43, 0.35)',
+                      boxShadow: '0 8px 24px rgba(30, 216, 43, 0.24)',
                     }}
-                    className="pointer-events-none absolute inset-y-2 inset-x-0 flex items-center justify-start bg-[#1ED82B] pl-7"
+                    className="pointer-events-none absolute inset-y-2 inset-x-0 flex items-center justify-start bg-[#1ED82B] pl-7 will-change-transform"
                   >
                     <motion.div
                       style={{ opacity: checkPreviewOpacity }}
@@ -434,7 +434,7 @@ export function EntrySheet({
                           exit={{ opacity: 0, y: -4, scale: 0.96 }}
                           transition={{ type: 'spring', stiffness: 500, damping: 34 }}
                           onPointerDown={(e) => e.stopPropagation()}
-                          className="absolute left-1/2 top-full z-30 mt-2.5 w-[264px] -translate-x-1/2 rounded-[24px] border border-gray-100 bg-white p-2 shadow-[0_14px_44px_rgba(0,0,0,0.16)]"
+                          className="absolute left-1/2 top-full z-30 mt-2.5 w-[264px] -translate-x-1/2 rounded-[24px] border border-gray-100 bg-white p-2 shadow-xl"
                         >
                           <div className="space-y-0.5">
                             {activeCategories.map((cat) => {

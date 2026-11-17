@@ -18,10 +18,10 @@ export function ExitDialog({ isOpen, onStay, onExit }: ExitDialogProps) {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.16 }}
             onClick={onStay}
-            className="absolute inset-0 bg-black/70 backdrop-blur-[3px]"
+            className="absolute inset-0 bg-black/75"
           />
 
-          {/* Centered Dark Glassy Card */}
+          {/* Centered Dark Modal Card */}
           <motion.div
             role="alertdialog"
             aria-modal="true"
@@ -31,7 +31,7 @@ export function ExitDialog({ isOpen, onStay, onExit }: ExitDialogProps) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: 8 }}
             transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-            className="relative z-10 w-full max-w-[320px] rounded-[28px] border border-white/[0.09] bg-[#16191F]/90 p-6 text-center text-white shadow-[0_24px_60px_rgba(0,0,0,0.65)] backdrop-blur-xl"
+            className="relative z-10 w-full max-w-[320px] rounded-[28px] border border-white/[0.09] bg-[#16191F] p-6 text-center text-white shadow-xl"
           >
             <h2 id="exit-dialog-title" className="text-[18px] font-bold tracking-tight text-white">
               Exit app?

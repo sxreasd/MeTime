@@ -185,6 +185,11 @@ export function Home({
   const [undoBackup, setUndoBackup] = useState<DeletedTxBackup | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // List windowing when > 50 transactions to keep APK 60fps
+  const PAGE_SIZE = 50;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
   // Layout measurement refs for 60fps Y-transform snapping
   const rootRef = useRef<HTMLDivElement>(null);
   const heroRef = useRef<HTMLDivElement>(null);
@@ -330,9 +335,36 @@ export function Home({
     });
   }, [isExpanded, transactions, searchQuery, typeFilter, categoryFilter, dateRange, customFrom, customTo]);
 
+  // Reset window size when search/filter/expand state changes
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [isExpanded, searchQuery, typeFilter, categoryFilter, dateRange, customFrom, customTo]);
+
+  const visibleTransactions = useMemo(
+    () => filteredTransactions.slice(0, visibleCount),
+    [filteredTransactions, visibleCount]
+  );
+
+  const hasMoreTransactions = visibleCount < filteredTransactions.length;
+
+  useEffect(() => {
+    if (!hasMoreTransactions || !loadMoreRef.current) return;
+    const el = loadMoreRef.current;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleCount((c) => Math.min(c + PAGE_SIZE, filteredTransactions.length));
+        }
+      },
+      { root: listScrollRef.current, rootMargin: '160px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMoreTransactions, filteredTransactions.length]);
+
   const groupedTransactions = useMemo(() => {
     const groups: { label: string; items: Transaction[] }[] = [];
-    for (const tx of filteredTransactions) {
+    for (const tx of visibleTransactions) {
       const label = getDateGroupLabel(tx.createdAt);
       const last = groups[groups.length - 1];
       if (last && last.label === label) {
@@ -342,7 +374,7 @@ export function Home({
       }
     }
     return groups;
-  }, [filteredTransactions]);
+  }, [visibleTransactions]);
 
   const hasActiveFilters =
     typeFilter !== 'all' || categoryFilter !== 'all' || dateRange !== 'all';
@@ -413,10 +445,13 @@ export function Home({
     setCustomTo('');
   };
 
-  const getDotColor = (tx: Transaction) =>
-    tx.type === 'jar_deposit' || tx.type === 'jar_withdraw'
-      ? '#4DABFF'
-      : categoryColorMap.get(tx.category) || '#10B981';
+  const getDotColor = useCallback(
+    (tx: Transaction) =>
+      tx.type === 'jar_deposit' || tx.type === 'jar_withdraw'
+        ? '#4DABFF'
+        : categoryColorMap.get(tx.category) || '#10B981',
+    [categoryColorMap]
+  );
 
   return (
     <motion.div
@@ -454,7 +489,7 @@ export function Home({
               triggerFeedback(settings.hapticsEnabled, 'tap');
               onNavigate('settings');
             }}
-            className="absolute right-0 flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[#1C2124]/75 text-[#9CA3AF] backdrop-blur-md transition-colors duration-100 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+            className="absolute right-0 flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[#1C2124]/92 text-[#9CA3AF] transition-colors duration-100 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
           >
             <Settings className="h-[19px] w-[19px]" />
           </motion.button>
@@ -500,7 +535,7 @@ export function Home({
                 triggerFeedback(settings.hapticsEnabled, 'tap');
                 onOpenEntry('add');
               }}
-              className="min-h-[44px] rounded-full border border-white/[0.08] bg-[#1C2124]/80 px-7 py-2.5 text-[14px] font-medium text-[#C8CFD5] backdrop-blur-md hover:bg-[#242A2E] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+              className="min-h-[44px] rounded-full border border-white/[0.08] bg-[#1C2124]/92 px-7 py-2.5 text-[14px] font-medium text-[#C8CFD5] hover:bg-[#242A2E] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
             >
               Add
             </motion.button>
@@ -517,7 +552,7 @@ export function Home({
               triggerFeedback(settings.hapticsEnabled, 'tap');
               onNavigate('analytics');
             }}
-            className="flex flex-col justify-between rounded-[24px] border border-white/[0.07] bg-[#1A1D21]/80 p-4 text-left backdrop-blur-md hover:bg-[#1F2328]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+            className="flex flex-col justify-between rounded-[24px] border border-white/[0.07] bg-[#1A1D21]/92 p-4 text-left hover:bg-[#1F2328] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
           >
             <span className="text-[12px] font-medium text-[#8E959B]">Today&apos;s Spending</span>
             <AnimatedNumber
@@ -538,7 +573,7 @@ export function Home({
               triggerFeedback(settings.hapticsEnabled, 'tap');
               onNavigate('piggy');
             }}
-            className="flex items-center justify-between gap-2 rounded-[24px] border border-white/[0.07] bg-[#1A1D21]/80 p-4 text-left backdrop-blur-md hover:bg-[#1F2328]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+            className="flex items-center justify-between gap-2 rounded-[24px] border border-white/[0.07] bg-[#1A1D21]/92 p-4 text-left hover:bg-[#1F2328] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
           >
             <div className="min-w-0">
               <span className="block text-[12px] font-medium text-[#8E959B]">Piggy Bank</span>
@@ -554,7 +589,7 @@ export function Home({
 
             <div
               aria-hidden="true"
-              className="relative h-11 w-11 shrink-0 overflow-hidden rounded-[12px] shadow-[0_6px_18px_rgba(37,99,235,0.42)]"
+              className="relative h-11 w-11 shrink-0 overflow-hidden rounded-[12px] shadow-sm"
             >
               <div className="h-[22%] w-full bg-[#FFE226]" />
               <div className="h-[20%] w-full bg-[#F43F5E]" />
@@ -611,7 +646,7 @@ export function Home({
         {/* Search bar on dark background — isolated from panel drag */}
         <div
           onPointerDown={(e) => e.stopPropagation()}
-          className="mt-3.5 flex items-center gap-2.5 rounded-2xl border border-white/[0.07] bg-[#1A1D21]/85 px-4 py-2.5 backdrop-blur-md"
+          className="mt-3.5 flex items-center gap-2.5 rounded-2xl border border-white/[0.07] bg-[#1A1D21]/92 px-4 py-2.5"
         >
           <Search className="h-4 w-4 shrink-0 text-[#8E959B]" />
           <input
@@ -661,7 +696,7 @@ export function Home({
           onClick={() => {
             if (openSwipeTxId) setOpenSwipeTxId(null);
           }}
-          className="pointer-events-auto relative flex w-full flex-col overflow-hidden bg-white text-[#111827] shadow-[0_-12px_40px_rgba(0,0,0,0.4)]"
+          className="pointer-events-auto relative flex w-full flex-col overflow-hidden bg-white text-[#111827] shadow-xl will-change-transform"
         >
           {/* Drag Handle Only (clean collapsed state: handle + list only) */}
           <div
@@ -776,7 +811,7 @@ export function Home({
               /* Collapsed View: Clean Rounded Transaction Cards */
               <div className="space-y-0.5 pt-0.5">
                 <AnimatePresence initial={false}>
-                  {filteredTransactions.map((tx) => (
+                  {visibleTransactions.map((tx) => (
                     <SwipeableTransactionRow
                       key={tx.id}
                       tx={tx}
@@ -789,6 +824,20 @@ export function Home({
                     />
                   ))}
                 </AnimatePresence>
+              </div>
+            )}
+
+            {hasMoreTransactions && (
+              <div ref={loadMoreRef} className="flex justify-center py-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setVisibleCount((c) => Math.min(c + PAGE_SIZE, filteredTransactions.length))
+                  }
+                  className="rounded-full bg-gray-100 px-4 py-1.5 text-[12px] font-medium text-gray-600 active:scale-95"
+                >
+                  Load more ({filteredTransactions.length - visibleCount} remaining)
+                </button>
               </div>
             )}
           </div>
@@ -809,7 +858,7 @@ export function Home({
               exit={{ opacity: 0 }}
               transition={{ duration: 0.16 }}
               onClick={() => setShowFilter(false)}
-              className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
+              className="absolute inset-0 bg-black/65"
             />
 
             <motion.div
@@ -819,7 +868,7 @@ export function Home({
               transition={{ type: 'spring', stiffness: 420, damping: 32 }}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
-              className="relative z-10 max-h-[65dvh] space-y-3.5 overflow-y-auto rounded-[24px] border border-white/[0.1] bg-[#16191F]/95 p-4 text-white shadow-[0_24px_60px_rgba(0,0,0,0.65)] backdrop-blur-xl"
+              className="relative z-10 max-h-[65dvh] space-y-3.5 overflow-y-auto rounded-[24px] border border-white/[0.1] bg-[#16191F] p-4 text-white shadow-2xl"
             >
               <div className="flex items-center justify-between">
                 <span className="text-[14px] font-semibold tracking-tight text-white">
@@ -970,7 +1019,7 @@ export function Home({
             exit={{ opacity: 0, y: 14, scale: 0.96 }}
             transition={{ type: 'spring', stiffness: 420, damping: 32 }}
             style={{ bottom: 'calc(5.6rem + env(safe-area-inset-bottom))' }}
-            className="pointer-events-auto absolute inset-x-6 z-40 mx-auto flex max-w-[340px] items-center justify-between gap-4 rounded-full border border-white/[0.1] bg-[#16191F]/92 px-5 py-3 text-[13px] text-white shadow-[0_14px_38px_rgba(0,0,0,0.45)] backdrop-blur-xl"
+            className="pointer-events-auto absolute inset-x-6 z-40 mx-auto flex max-w-[340px] items-center justify-between gap-4 rounded-full border border-white/[0.1] bg-[#16191F] px-5 py-3 text-[13px] text-white shadow-lg"
           >
             <span className="font-medium text-[#E5E7EB]">Transaction deleted</span>
             <button

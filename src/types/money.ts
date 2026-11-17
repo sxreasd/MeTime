@@ -78,7 +78,7 @@ export const JAR_COLOR_STYLES: Record<
     subtext: 'rgba(17, 24, 39, 0.72)',
     btnBg: 'rgba(17, 24, 39, 0.16)',
     btnText: '#FFFFFF',
-    glow: '0 14px 36px -8px rgba(255, 226, 38, 0.35)',
+    glow: '0 4px 12px rgba(0, 0, 0, 0.22)',
     label: 'Yellow',
   },
   green: {
@@ -89,7 +89,7 @@ export const JAR_COLOR_STYLES: Record<
     subtext: 'rgba(17, 24, 39, 0.72)',
     btnBg: 'rgba(17, 24, 39, 0.16)',
     btnText: '#FFFFFF',
-    glow: '0 14px 36px -8px rgba(110, 239, 162, 0.32)',
+    glow: '0 4px 12px rgba(0, 0, 0, 0.22)',
     label: 'Green',
   },
   blue: {
@@ -100,7 +100,7 @@ export const JAR_COLOR_STYLES: Record<
     subtext: 'rgba(255, 255, 255, 0.85)',
     btnBg: 'rgba(15, 23, 42, 0.22)',
     btnText: '#FFFFFF',
-    glow: '0 14px 36px -8px rgba(77, 171, 255, 0.36)',
+    glow: '0 4px 12px rgba(0, 0, 0, 0.22)',
     label: 'Blue',
   },
   pink: {
@@ -111,7 +111,7 @@ export const JAR_COLOR_STYLES: Record<
     subtext: 'rgba(255, 255, 255, 0.85)',
     btnBg: 'rgba(15, 23, 42, 0.22)',
     btnText: '#FFFFFF',
-    glow: '0 14px 36px -8px rgba(244, 114, 182, 0.35)',
+    glow: '0 4px 12px rgba(0, 0, 0, 0.22)',
     label: 'Pink',
   },
   purple: {
@@ -122,7 +122,7 @@ export const JAR_COLOR_STYLES: Record<
     subtext: 'rgba(255, 255, 255, 0.85)',
     btnBg: 'rgba(15, 23, 42, 0.22)',
     btnText: '#FFFFFF',
-    glow: '0 14px 36px -8px rgba(167, 139, 250, 0.35)',
+    glow: '0 4px 12px rgba(0, 0, 0, 0.22)',
     label: 'Purple',
   },
   orange: {
@@ -133,7 +133,7 @@ export const JAR_COLOR_STYLES: Record<
     subtext: 'rgba(17, 24, 39, 0.72)',
     btnBg: 'rgba(17, 24, 39, 0.16)',
     btnText: '#FFFFFF',
-    glow: '0 14px 36px -8px rgba(251, 146, 60, 0.35)',
+    glow: '0 4px 12px rgba(0, 0, 0, 0.22)',
     label: 'Orange',
   },
 };

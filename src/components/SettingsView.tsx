@@ -9,7 +9,6 @@ import {
 } from 'lucide-react';
 import { useMoney } from '../context/MoneyContext';
 import { formatCurrency, triggerFeedback } from '../utils/format';
-import { AppBackground } from './AppBackground';
 
 interface SettingsViewProps {
   onBack: () => void;
@@ -87,8 +86,7 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
   };
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden bg-[#05060D] text-white">
-      <AppBackground />
+    <div className="relative flex h-full w-full flex-col overflow-hidden bg-transparent text-white">
 
       {/* Header */}
       <header

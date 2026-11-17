@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { MoneyProvider } from './context/MoneyContext';
 import { AppScreen, ConfirmationData } from './types/money';
-import { AppBackground } from './components/AppBackground';
 import { INTRO_TIMING, IntroSequence, IntroStage } from './components/IntroSequence';
 import { Home } from './components/Home';
 import { EntrySheet } from './components/EntrySheet';
@@ -221,9 +220,30 @@ function MeTimeAppShell() {
         }`}
       >
         {/* True edge-to-edge on phones (<501px), centered phone frame only on desktop (>500px) */}
-        <main className="relative h-full w-full overflow-hidden bg-[#05060D] min-[501px]:h-[min(860px,94dvh)] min-[501px]:max-w-[420px] min-[501px]:rounded-[40px] min-[501px]:border min-[501px]:border-white/[0.08] min-[501px]:shadow-[0_24px_80px_rgba(0,0,0,0.75)]">
-          {/* Global Decorative Starburst & Indigo/Purple Background */}
-          <AppBackground introStage={introStage} />
+        <main className="relative h-full w-full overflow-hidden bg-[#05060D] min-[501px]:h-[min(860px,94dvh)] min-[501px]:max-w-[420px] min-[501px]:rounded-[40px] min-[501px]:border min-[501px]:border-white/[0.08] min-[501px]:shadow-2xl">
+          {/* Single Fixed Static Background Image Layer (renders once behind all dark screens) */}
+          <motion.div
+            aria-hidden="true"
+            initial={introStage === 'hidden' ? { opacity: 0 } : false}
+            animate={{ opacity: introStage === 'hidden' ? 0 : 1 }}
+            transition={
+              introStage === 'settled'
+                ? { duration: INTRO_TIMING.skipFadeDuration, ease: 'easeOut' }
+                : {
+                    duration: INTRO_TIMING.home.backgroundDuration,
+                    delay: INTRO_TIMING.home.backgroundDelay,
+                    ease: INTRO_TIMING.home.ease,
+                  }
+            }
+            style={{
+              backgroundColor: '#05060D',
+              backgroundImage: "url('/bg.jpg')",
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat',
+            }}
+            className="pointer-events-none fixed inset-0 z-0 min-[501px]:absolute"
+          />
 
           {/* Underlying Screen Stack — rendered underneath from frame 0 with zero layout jump */}
           <div className="relative z-10 h-full w-full">
@@ -335,7 +355,7 @@ function MeTimeAppShell() {
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 12 }}
-                className="pointer-events-none absolute inset-x-6 bottom-24 z-50 rounded-full border border-white/10 bg-[#1A1D21]/95 px-4 py-2.5 text-center text-[12px] font-medium text-white shadow-xl"
+                className="pointer-events-none absolute inset-x-6 bottom-24 z-50 rounded-full border border-white/10 bg-[#1A1D21] px-4 py-2.5 text-center text-[12px] font-medium text-white shadow-lg"
               >
                 App session closed — you may close this tab.
               </motion.div>
