@@ -18,6 +18,7 @@ interface EntrySheetProps {
   initialMode: 'spend' | 'add';
   onClose: () => void;
   onConfirm: (data: ConfirmationData) => void;
+  registerBackHandler?: (fn: (() => boolean) | null) => void;
 }
 
 export function EntrySheet({
@@ -26,6 +27,7 @@ export function EntrySheet({
   initialMode,
   onClose,
   onConfirm,
+  registerBackHandler,
 }: EntrySheetProps) {
   const { spendCategories, addCategories, balance, settings, addTransaction } = useMoney();
 
@@ -79,6 +81,23 @@ export function EntrySheet({
     document.addEventListener('mousedown', handleDown);
     return () => document.removeEventListener('mousedown', handleDown);
   }, [dropdownOpen]);
+
+  // Register back interceptor for dropdown before closing the whole sheet
+  useEffect(() => {
+    if (!registerBackHandler) return;
+    if (!isOpen || isConfirming) {
+      registerBackHandler(null);
+      return;
+    }
+    registerBackHandler(() => {
+      if (dropdownOpen) {
+        setDropdownOpen(false);
+        return true;
+      }
+      return false;
+    });
+    return () => registerBackHandler(null);
+  }, [isOpen, isConfirming, dropdownOpen, registerBackHandler]);
 
   const selectedCategory = useMemo(
     () => activeCategories.find((c) => c.id === selectedCategoryId) || activeCategories[0],
@@ -235,8 +254,8 @@ export function EntrySheet({
             className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"
           />
 
-          {/* Phone-contained bottom sheet */}
-          <div className="pointer-events-none relative z-10 flex h-full w-full max-w-[420px] items-end overflow-hidden sm:rounded-[38px]">
+          {/* Phone-contained bottom sheet on >500px, edge-to-edge on phones */}
+          <div className="pointer-events-none relative z-10 flex h-full w-full items-end overflow-hidden min-[501px]:max-w-[420px] min-[501px]:rounded-[38px]">
             <motion.div
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
@@ -253,7 +272,8 @@ export function EntrySheet({
               dragElastic={{ top: 0, bottom: 0.35 }}
               dragSnapToOrigin
               onDragEnd={handleSheetDragEnd}
-              className="pointer-events-auto relative flex max-h-[92%] w-full flex-col rounded-t-[32px] bg-white px-5 pt-3 pb-5 text-[#111827] shadow-[0_-16px_50px_rgba(0,0,0,0.35)]"
+              style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}
+              className="pointer-events-auto relative flex max-h-[92%] w-full flex-col rounded-t-[32px] bg-white px-5 pt-3 text-[#111827] shadow-[0_-16px_50px_rgba(0,0,0,0.35)]"
             >
               {/* Drag Handle + Mode Toggle Header (vertical drag zone) */}
               <div

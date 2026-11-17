@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import {
   Check,
@@ -9,9 +9,11 @@ import {
 } from 'lucide-react';
 import { useMoney } from '../context/MoneyContext';
 import { formatCurrency, triggerFeedback } from '../utils/format';
+import { AppBackground } from './AppBackground';
 
 interface SettingsViewProps {
   onBack: () => void;
+  registerBackHandler?: (fn: (() => boolean) | null) => void;
 }
 
 const SWATCH_COLORS = [
@@ -27,7 +29,7 @@ const SWATCH_COLORS = [
 
 const CURRENCY_OPTIONS = ['₱', '$', '€', '¥', '£'];
 
-export function SettingsView({ onBack }: SettingsViewProps) {
+export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps) {
   const {
     settings,
     categories,
@@ -42,6 +44,18 @@ export function SettingsView({ onBack }: SettingsViewProps) {
   const [startingInput, setStartingInput] = useState(String(settings.startingBalance));
   const [savedToast, setSavedToast] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+
+  useEffect(() => {
+    if (!registerBackHandler) return;
+    registerBackHandler(() => {
+      if (confirmReset) {
+        setConfirmReset(false);
+        return true;
+      }
+      return false;
+    });
+    return () => registerBackHandler(null);
+  }, [confirmReset, registerBackHandler]);
 
   const showToast = (msg: string) => {
     setSavedToast(msg);
@@ -73,19 +87,14 @@ export function SettingsView({ onBack }: SettingsViewProps) {
   };
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden bg-[#0B0F10] text-white">
-      {/* Top-right radial teal glow */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -top-12 -right-12 h-72 w-72 rounded-full opacity-75 blur-2xl"
-        style={{
-          background:
-            'radial-gradient(circle, rgba(24, 118, 128, 0.3) 0%, rgba(16, 72, 82, 0.12) 55%, rgba(11, 15, 16, 0) 75%)',
-        }}
-      />
+    <div className="relative flex h-full w-full flex-col overflow-hidden bg-[#05060D] text-white">
+      <AppBackground />
 
       {/* Header */}
-      <header className="relative z-10 flex items-center justify-between px-6 pt-6 pb-3">
+      <header
+        style={{ paddingTop: 'max(1.35rem, env(safe-area-inset-top))' }}
+        className="relative z-10 flex items-center justify-between px-6 pb-3"
+      >
         <button
           type="button"
           aria-label="Back to Home"

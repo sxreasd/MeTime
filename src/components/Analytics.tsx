@@ -5,9 +5,11 @@ import { useMoney } from '../context/MoneyContext';
 import { AnalyticsPeriod } from '../types/money';
 import { computeAnalytics, formatCurrency, triggerFeedback } from '../utils/format';
 import { AnimatedNumber } from './AnimatedNumber';
+import { AppBackground } from './AppBackground';
 
 interface AnalyticsProps {
   onBack: () => void;
+  registerBackHandler?: (fn: (() => boolean) | null) => void;
 }
 
 /** Smooth Catmull-Rom to Cubic Bezier SVG path builder */
@@ -49,7 +51,7 @@ function buildSmoothSpline(coords: { x: number; y: number }[]): {
   return { linePath: d, areaPath, baselineY };
 }
 
-export function Analytics({ onBack }: AnalyticsProps) {
+export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
   const {
     transactions,
     spendCategories,
@@ -63,6 +65,18 @@ export function Analytics({ onBack }: AnalyticsProps) {
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [showEmptyCats, setShowEmptyCats] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!registerBackHandler) return;
+    registerBackHandler(() => {
+      if (menuOpen) {
+        setMenuOpen(false);
+        return true;
+      }
+      return false;
+    });
+    return () => registerBackHandler(null);
+  }, [menuOpen, registerBackHandler]);
 
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -131,19 +145,14 @@ export function Analytics({ onBack }: AnalyticsProps) {
   };
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden bg-[#0B0F10] text-white">
-      {/* Top-right radial teal glow */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -top-12 -right-12 h-72 w-72 rounded-full opacity-75 blur-2xl"
-        style={{
-          background:
-            'radial-gradient(circle, rgba(24, 118, 128, 0.3) 0%, rgba(16, 72, 82, 0.12) 55%, rgba(11, 15, 16, 0) 75%)',
-        }}
-      />
+    <div className="relative flex h-full w-full flex-col overflow-hidden bg-[#05060D] text-white">
+      <AppBackground />
 
       {/* Header */}
-      <header className="relative z-20 flex items-center justify-between px-6 pt-6 pb-3">
+      <header
+        style={{ paddingTop: 'max(1.35rem, env(safe-area-inset-top))' }}
+        className="relative z-20 flex items-center justify-between px-6 pb-3"
+      >
         <button
           type="button"
           aria-label="Back to Home"

@@ -23,7 +23,11 @@ export function ConfirmScreen({ data, onClose }: ConfirmScreenProps) {
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') onClose();
           }}
-          style={{ borderRadius: 0 }}
+          style={{
+            borderRadius: 0,
+            paddingTop: 'max(3.5rem, env(safe-area-inset-top))',
+            paddingBottom: 'calc(3rem + env(safe-area-inset-bottom))',
+          }}
           exit={{
             opacity: 0,
             scale: 0.94,
@@ -31,7 +35,7 @@ export function ConfirmScreen({ data, onClose }: ConfirmScreenProps) {
             transition: { duration: 0.2, ease: [0.16, 1, 0.3, 1] },
           }}
           transition={{ type: 'spring', stiffness: 320, damping: 32, mass: 0.9 }}
-          className="absolute inset-0 z-50 flex h-full w-full cursor-pointer flex-col items-center justify-between bg-[#1ED82B] px-8 py-14 text-center text-white focus:outline-none"
+          className="absolute inset-0 z-50 flex h-full w-full cursor-pointer flex-col items-center justify-between bg-[#1ED82B] px-8 text-center text-white focus:outline-none"
         >
           <div aria-hidden="true" className="h-6" />
 

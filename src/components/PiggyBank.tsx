@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion, PanInfo, useDragControls } from 'motion/react';
 import {
   AlertTriangle,
   Check,
@@ -10,20 +10,21 @@ import {
   Plus,
   Settings,
   Trash2,
-  X,
 } from 'lucide-react';
 import { useMoney } from '../context/MoneyContext';
 import { JAR_COLOR_STYLES, Jar, JarColorKey } from '../types/money';
 import { formatCurrency, triggerFeedback } from '../utils/format';
 import { AnimatedNumber } from './AnimatedNumber';
+import { AppBackground } from './AppBackground';
 
 interface PiggyBankProps {
   onBack: () => void;
+  registerBackHandler?: (fn: (() => boolean) | null) => void;
 }
 
 const COLOR_KEYS: JarColorKey[] = ['yellow', 'green', 'blue', 'pink', 'purple', 'orange'];
 
-export function PiggyBank({ onBack }: PiggyBankProps) {
+export function PiggyBank({ onBack, registerBackHandler }: PiggyBankProps) {
   const { jars, balance, totalPiggyBank, settings, createJar, updateJar, deleteJar, transferJarMoney } =
     useMoney();
 
@@ -42,6 +43,34 @@ export function PiggyBank({ onBack }: PiggyBankProps) {
   const [transferJar, setTransferJar] = useState<Jar | null>(null);
   const [transferDir, setTransferDir] = useState<'deposit' | 'withdraw'>('deposit');
   const [transferAmountStr, setTransferAmountStr] = useState('');
+
+  // Sheet drag-to-close controls & scroll-top guards
+  const jarModalDragControls = useDragControls();
+  const transferSheetDragControls = useDragControls();
+  const jarModalRef = useRef<HTMLFormElement>(null);
+  const jarModalScrollRef = useRef<HTMLDivElement>(null);
+  const jarScrollStartYRef = useRef<number | null>(null);
+  const transferSheetRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!registerBackHandler) return;
+    registerBackHandler(() => {
+      if (transferJar) {
+        setTransferJar(null);
+        return true;
+      }
+      if (jarModalMode) {
+        setJarModalMode(null);
+        return true;
+      }
+      if (menuOpen) {
+        setMenuOpen(false);
+        return true;
+      }
+      return false;
+    });
+    return () => registerBackHandler(null);
+  }, [transferJar, jarModalMode, menuOpen, registerBackHandler]);
 
   const sortedJars = useMemo(() => {
     const copy = [...jars];
@@ -145,19 +174,14 @@ export function PiggyBank({ onBack }: PiggyBankProps) {
     transferDir === 'withdraw' && transferJar !== null && transferAmount > transferJar.balance;
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden bg-[#0B0F10] text-white">
-      {/* Top-right radial teal glow */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -top-12 -right-12 h-72 w-72 rounded-full opacity-75 blur-2xl"
-        style={{
-          background:
-            'radial-gradient(circle, rgba(24, 118, 128, 0.3) 0%, rgba(16, 72, 82, 0.12) 55%, rgba(11, 15, 16, 0) 75%)',
-        }}
-      />
+    <div className="relative flex h-full w-full flex-col overflow-hidden bg-[#05060D] text-white">
+      <AppBackground />
 
       {/* Top Header */}
-      <header className="relative z-20 flex items-center justify-between px-6 pt-6 pb-3">
+      <header
+        style={{ paddingTop: 'max(1.35rem, env(safe-area-inset-top))' }}
+        className="relative z-20 flex items-center justify-between px-6 pb-3"
+      >
         <button
           type="button"
           aria-label="Back to Home"
@@ -380,34 +404,73 @@ export function PiggyBank({ onBack }: PiggyBankProps) {
               onClick={() => setJarModalMode(null)}
               className="absolute inset-0 bg-black/65 backdrop-blur-[2px]"
             />
-            <div className="pointer-events-none relative z-10 flex h-full w-full max-w-[420px] items-end overflow-hidden sm:rounded-[38px]">
+            <div className="pointer-events-none relative z-10 flex h-full w-full items-end overflow-hidden min-[501px]:max-w-[420px] min-[501px]:rounded-[38px]">
               <motion.form
+                ref={jarModalRef}
                 onSubmit={handleSaveJar}
                 initial={{ y: '100%' }}
                 animate={{ y: 0 }}
                 exit={{ y: '100%' }}
                 transition={{ type: 'spring', stiffness: 360, damping: 34 }}
-                className="pointer-events-auto w-full rounded-t-[32px] border-t border-white/10 bg-[#14181B] px-6 pt-4 pb-7 text-white shadow-2xl"
+                drag="y"
+                dragControls={jarModalDragControls}
+                dragListener={false}
+                dragConstraints={{ top: 0 }}
+                dragElastic={{ top: 0.06, bottom: 1 }}
+                dragSnapToOrigin
+                onDragEnd={(_e, info: PanInfo) => {
+                  const sheetHeight = jarModalRef.current?.offsetHeight || 440;
+                  if (info.offset.y > sheetHeight * 0.3 || info.velocity.y > 420) {
+                    setJarModalMode(null);
+                  }
+                }}
+                style={{ paddingBottom: 'calc(1.75rem + env(safe-area-inset-bottom))' }}
+                className="pointer-events-auto flex max-h-[88dvh] w-full flex-col rounded-t-[32px] border-t border-white/10 bg-[#14181B] px-6 pt-3 text-white shadow-2xl"
               >
-                <div className="mx-auto mb-4 h-1 w-9 rounded-full bg-white/20" />
-                <div className="flex items-center justify-between">
+                <div
+                  onPointerDown={(e) => jarModalDragControls.start(e)}
+                  className="-mx-6 cursor-grab touch-none px-6 pt-1 pb-3 active:cursor-grabbing"
+                >
+                  <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-white/25" />
                   <h2 className="text-[18px] font-bold">
                     {jarModalMode === 'create' ? 'New Savings Jar' : 'Edit Jar'}
                   </h2>
-                  <button
-                    type="button"
-                    onClick={() => setJarModalMode(null)}
-                    className="flex h-10 w-10 items-center justify-center rounded-full bg-white/5 text-[#9CA3AF] hover:text-white"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
                 </div>
 
-                <div className="mt-5 space-y-4">
-                  <div>
-                    <label className="mb-1.5 block text-[12px] font-medium text-[#8E959B]">
-                      Jar Name
-                    </label>
+                <div
+                  ref={jarModalScrollRef}
+                  onPointerDown={(e) => {
+                    const target = e.target as HTMLElement;
+                    if (target.closest('input, button, select, textarea')) {
+                      jarScrollStartYRef.current = null;
+                      return;
+                    }
+                    jarScrollStartYRef.current = e.clientY;
+                  }}
+                  onPointerMove={(e) => {
+                    if (jarScrollStartYRef.current === null) return;
+                    const deltaY = e.clientY - jarScrollStartYRef.current;
+                    const scrollTop = jarModalScrollRef.current?.scrollTop ?? 0;
+                    if (scrollTop <= 0 && deltaY > 6) {
+                      jarScrollStartYRef.current = null;
+                      jarModalDragControls.start(e);
+                    } else if (deltaY < -6) {
+                      jarScrollStartYRef.current = null;
+                    }
+                  }}
+                  onPointerUp={() => {
+                    jarScrollStartYRef.current = null;
+                  }}
+                  onPointerCancel={() => {
+                    jarScrollStartYRef.current = null;
+                  }}
+                  className="no-scrollbar mt-2 flex-1 overflow-y-auto"
+                >
+                  <div className="space-y-4">
+                    <div>
+                      <label className="mb-1.5 block text-[12px] font-medium text-[#8E959B]">
+                        Jar Name
+                      </label>
                     <input
                       type="text"
                       required
@@ -516,6 +579,7 @@ export function PiggyBank({ onBack }: PiggyBankProps) {
                     </div>
                   )}
                 </div>
+                </div>
               </motion.form>
             </div>
           </div>
@@ -533,59 +597,76 @@ export function PiggyBank({ onBack }: PiggyBankProps) {
               onClick={() => setTransferJar(null)}
               className="absolute inset-0 bg-black/65 backdrop-blur-[2px]"
             />
-            <div className="pointer-events-none relative z-10 flex h-full w-full max-w-[420px] items-end overflow-hidden sm:rounded-[38px]">
+            <div className="pointer-events-none relative z-10 flex h-full w-full items-end overflow-hidden min-[501px]:max-w-[420px] min-[501px]:rounded-[38px]">
               <motion.div
+                ref={transferSheetRef}
                 initial={{ y: '100%' }}
                 animate={{ y: 0 }}
                 exit={{ y: '100%' }}
                 transition={{ type: 'spring', stiffness: 360, damping: 34 }}
-                className="pointer-events-auto w-full rounded-t-[32px] bg-white px-5 pt-3 pb-5 text-[#111827] shadow-2xl"
+                drag="y"
+                dragControls={transferSheetDragControls}
+                dragListener={false}
+                dragConstraints={{ top: 0 }}
+                dragElastic={{ top: 0.06, bottom: 1 }}
+                dragSnapToOrigin
+                onDragEnd={(_e, info: PanInfo) => {
+                  const sheetHeight = transferSheetRef.current?.offsetHeight || 480;
+                  if (info.offset.y > sheetHeight * 0.3 || info.velocity.y > 420) {
+                    setTransferJar(null);
+                  }
+                }}
+                style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}
+                className="pointer-events-auto w-full rounded-t-[32px] bg-white px-5 pt-3 text-[#111827] shadow-2xl"
               >
-                <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-gray-200" />
+                <div
+                  onPointerDown={(e) => {
+                    if ((e.target as HTMLElement).closest('button')) return;
+                    transferSheetDragControls.start(e);
+                  }}
+                  className="-mx-5 cursor-grab touch-none px-5 pt-1 pb-1 active:cursor-grabbing"
+                >
+                  <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-gray-300" />
 
-                {/* Deposit / Withdraw Segmented Pill */}
-                <div className="flex items-center justify-between px-1">
-                  <div className="inline-flex rounded-full bg-[#F1F3F5] p-1">
-                    {(['deposit', 'withdraw'] as const).map((dir) => {
-                      const active = transferDir === dir;
-                      return (
-                        <button
-                          key={dir}
-                          type="button"
-                          onClick={() => {
-                            triggerFeedback(settings.hapticsEnabled, 'tap');
-                            setTransferDir(dir);
-                          }}
-                          className={`relative rounded-full px-4 py-1.5 text-[13px] transition-colors ${
-                            active ? 'font-semibold text-[#111827]' : 'font-medium text-gray-500'
-                          }`}
-                        >
-                          {active && (
-                            <motion.span
-                              layoutId="jar-transfer-pill"
-                              transition={{ type: 'spring', stiffness: 460, damping: 34 }}
-                              className="absolute inset-0 rounded-full bg-white shadow-xs"
-                            />
-                          )}
-                          <span className="relative z-10">
-                            {dir === 'deposit' ? 'Move to Jar' : 'Withdraw'}
-                          </span>
-                        </button>
-                      );
-                    })}
+                  {/* Deposit / Withdraw Segmented Pill */}
+                  <div className="flex items-center justify-center px-1">
+                    <div className="inline-flex rounded-full bg-[#F1F3F5] p-1">
+                      {(['deposit', 'withdraw'] as const).map((dir) => {
+                        const active = transferDir === dir;
+                        return (
+                          <button
+                            key={dir}
+                            type="button"
+                            onClick={() => {
+                              triggerFeedback(settings.hapticsEnabled, 'tap');
+                              setTransferDir(dir);
+                            }}
+                            className={`relative rounded-full px-4 py-1.5 text-[13px] transition-colors ${
+                              active ? 'font-semibold text-[#111827]' : 'font-medium text-gray-500'
+                            }`}
+                          >
+                            {active && (
+                              <motion.span
+                                layoutId="jar-transfer-pill"
+                                transition={{ type: 'spring', stiffness: 460, damping: 34 }}
+                                className="absolute inset-0 rounded-full bg-white shadow-xs"
+                              />
+                            )}
+                            <span className="relative z-10">
+                              {dir === 'deposit' ? 'Move to Jar' : 'Withdraw'}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setTransferJar(null)}
-                    className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-500"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
                 </div>
 
                 {/* Jar Context & Amount Display */}
-                <div className="py-4 text-center">
+                <div
+                  onPointerDown={(e) => transferSheetDragControls.start(e)}
+                  className="cursor-grab touch-none py-4 text-center active:cursor-grabbing"
+                >
                   <p className="text-[12px] font-medium text-gray-500">
                     {transferJar.name} ·{' '}
                     {transferDir === 'deposit'

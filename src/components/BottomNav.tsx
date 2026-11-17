@@ -1,30 +1,63 @@
-import { motion } from 'motion/react';
+import { motion, Variants } from 'motion/react';
 import { CreditCard, Home as HomeIcon, LayoutGrid } from 'lucide-react';
 import { AppScreen } from '../types/money';
 import { triggerFeedback } from '../utils/format';
 import { useMoney } from '../context/MoneyContext';
+import { INTRO_TIMING, IntroStage } from './IntroSequence';
 
 interface BottomNavProps {
   activeScreen: AppScreen;
   onNavigate: (screen: AppScreen) => void;
+  introStage?: IntroStage;
 }
 
-export function BottomNav({ activeScreen, onNavigate }: BottomNavProps) {
+const navVariants: Variants = {
+  hidden: {
+    opacity: 0,
+    y: 64,
+    scale: 0.94,
+  },
+  reveal: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: {
+      ...INTRO_TIMING.home.navSpring,
+      delay: INTRO_TIMING.home.navDelay,
+    },
+  },
+  settled: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: {
+      duration: INTRO_TIMING.skipFadeDuration,
+      ease: [0.22, 1, 0.36, 1],
+    },
+  },
+};
+
+export function BottomNav({
+  activeScreen,
+  onNavigate,
+  introStage = 'settled',
+}: BottomNavProps) {
   const { settings } = useMoney();
 
   const items: { id: AppScreen; label: string; icon: typeof HomeIcon }[] = [
-    { id: 'grid', label: 'Overview', icon: LayoutGrid },
+    { id: 'todo', label: 'To-Do List', icon: LayoutGrid },
     { id: 'home', label: 'Home', icon: HomeIcon },
-    { id: 'transactions', label: 'Transactions', icon: CreditCard },
+    { id: 'card_soon', label: 'Coming soon', icon: CreditCard },
   ];
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 12 }}
-      transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-      className="pointer-events-none absolute inset-x-0 bottom-5 z-30 flex justify-center px-6"
+      variants={navVariants}
+      initial={introStage === 'hidden' ? 'hidden' : { opacity: 0, y: 12, scale: 1 }}
+      animate={introStage}
+      exit={{ opacity: 0, y: 14 }}
+      style={{ bottom: 'calc(1.15rem + env(safe-area-inset-bottom))' }}
+      className="pointer-events-none absolute inset-x-0 z-30 flex justify-center px-6"
     >
       <nav
         aria-label="Primary navigation"

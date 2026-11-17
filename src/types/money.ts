@@ -7,6 +7,7 @@ export interface Transaction {
   note?: string;
   jarId?: string;
   jarName?: string;
+  closedJar?: Jar;
   amount: number;
   createdAt: string; // ISO string
 }
@@ -39,8 +40,8 @@ export interface Settings {
 
 export type AppScreen =
   | 'home'
-  | 'grid'
-  | 'transactions'
+  | 'todo'
+  | 'card_soon'
   | 'piggy'
   | 'analytics'
   | 'settings';

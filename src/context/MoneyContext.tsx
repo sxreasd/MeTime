@@ -66,6 +66,11 @@ function getInitialState(): PersistedState {
   };
 }
 
+export interface DeletedTxBackup {
+  tx: Transaction;
+  index: number;
+}
+
 interface MoneyContextValue {
   transactions: Transaction[];
   jars: Jar[];
@@ -86,7 +91,8 @@ interface MoneyContextValue {
     jarId?: string;
     jarName?: string;
   }) => Transaction;
-  deleteTransaction: (id: string) => void;
+  deleteTransaction: (id: string) => DeletedTxBackup | null;
+  restoreTransaction: (backup: DeletedTxBackup) => void;
   createJar: (input: { name: string; color: JarColorKey; goal?: number }) => Jar;
   updateJar: (id: string, updates: { name?: string; color?: JarColorKey; goal?: number }) => void;
   deleteJar: (id: string) => void;
@@ -179,11 +185,80 @@ export function MoneyProvider({ children }: { children: React.ReactNode }) {
     return newTx;
   };
 
-  const deleteTransaction = (id: string) => {
-    setState((prev) => ({
-      ...prev,
-      transactions: prev.transactions.filter((t) => t.id !== id),
-    }));
+  const deleteTransaction = (id: string): DeletedTxBackup | null => {
+    const idx = state.transactions.findIndex((t) => t.id === id);
+    if (idx === -1) return null;
+    const target = state.transactions[idx];
+
+    setState((prev) => {
+      const txIndex = prev.transactions.findIndex((t) => t.id === id);
+      if (txIndex === -1) return prev;
+      const tx = prev.transactions[txIndex];
+
+      let nextJars = prev.jars;
+      if (tx.type === 'jar_deposit' && tx.jarId) {
+        nextJars = prev.jars.map((j) =>
+          j.id === tx.jarId
+            ? { ...j, balance: Math.max(0, Math.round((j.balance - tx.amount) * 100) / 100) }
+            : j
+        );
+      } else if (tx.type === 'jar_withdraw' && tx.jarId) {
+        const exists = prev.jars.some((j) => j.id === tx.jarId);
+        if (exists) {
+          nextJars = prev.jars.map((j) =>
+            j.id === tx.jarId
+              ? { ...j, balance: Math.round((j.balance + tx.amount) * 100) / 100 }
+              : j
+          );
+        } else if (tx.closedJar) {
+          nextJars = [...prev.jars, { ...tx.closedJar }];
+        }
+      }
+
+      return {
+        ...prev,
+        jars: nextJars,
+        transactions: prev.transactions.filter((t) => t.id !== id),
+      };
+    });
+
+    return { tx: target, index: idx };
+  };
+
+  const restoreTransaction = (backup: DeletedTxBackup) => {
+    const { tx, index } = backup;
+    setState((prev) => {
+      if (prev.transactions.some((t) => t.id === tx.id)) return prev;
+
+      const nextTxs = [...prev.transactions];
+      const insertAt = Math.min(Math.max(0, index), nextTxs.length);
+      nextTxs.splice(insertAt, 0, tx);
+
+      let nextJars = prev.jars;
+      if (tx.type === 'jar_deposit' && tx.jarId) {
+        nextJars = prev.jars.map((j) =>
+          j.id === tx.jarId
+            ? { ...j, balance: Math.round((j.balance + tx.amount) * 100) / 100 }
+            : j
+        );
+      } else if (tx.type === 'jar_withdraw' && tx.jarId) {
+        if (tx.closedJar) {
+          nextJars = prev.jars.filter((j) => j.id !== tx.jarId);
+        } else {
+          nextJars = prev.jars.map((j) =>
+            j.id === tx.jarId
+              ? { ...j, balance: Math.max(0, Math.round((j.balance - tx.amount) * 100) / 100) }
+              : j
+          );
+        }
+      }
+
+      return {
+        ...prev,
+        jars: nextJars,
+        transactions: nextTxs,
+      };
+    });
   };
 
   const createJar: MoneyContextValue['createJar'] = (input) => {
@@ -237,6 +312,7 @@ export function MoneyProvider({ children }: { children: React.ReactNode }) {
           note: `Closed ${target.name}`,
           jarId: target.id,
           jarName: target.name,
+          closedJar: { ...target },
           amount: target.balance,
           createdAt: new Date().toISOString(),
         });
@@ -389,6 +465,7 @@ export function MoneyProvider({ children }: { children: React.ReactNode }) {
         totalPiggyBank,
         addTransaction,
         deleteTransaction,
+        restoreTransaction,
         createJar,
         updateJar,
         deleteJar,
