@@ -63,6 +63,12 @@ export interface ConfirmationData {
   category: string;
   note?: string;
   subtitle: string;
+  originRect?: {
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+  };
 }
 
 export const JAR_COLOR_STYLES: Record<

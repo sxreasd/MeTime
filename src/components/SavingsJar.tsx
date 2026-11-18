@@ -13,6 +13,15 @@ import {
 import { useMoney } from '../context/MoneyContext';
 import { JAR_COLOR_STYLES, Jar, JarColorKey } from '../types/money';
 import { formatCurrency, triggerFeedback } from '../utils/format';
+import {
+  DECEL_EASE,
+  SHEET_DURATION,
+  SMALL_DURATION,
+  SOFT_EASE,
+  SOFT_PILL_SPRING,
+  SOFT_TAP,
+  SOFT_TAP_TRANSITION,
+} from '../utils/motion';
 import { AnimatedNumber } from './AnimatedNumber';
 import { JarCardWaveBackdrop, JarMiniIcon } from './JarGraphic';
 
@@ -25,6 +34,7 @@ const COLOR_KEYS: JarColorKey[] = ['yellow', 'green', 'blue', 'pink', 'purple', 
 
 interface JarCardProps {
   jar: Jar;
+  index: number;
   currency: string;
   onOpenTransfer: (jar: Jar) => void;
   onOpenEdit: (jar: Jar) => void;
@@ -32,6 +42,7 @@ interface JarCardProps {
 
 const JarCard = memo(function JarCard({
   jar,
+  index,
   currency,
   onOpenTransfer,
   onOpenEdit,
@@ -44,11 +55,14 @@ const JarCard = memo(function JarCard({
 
   return (
     <motion.div
-      layout="position"
-      initial={{ opacity: 0, y: 14, scale: 0.97 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.94 }}
-      transition={{ type: 'spring', stiffness: 360, damping: 28 }}
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.96, transition: { duration: SMALL_DURATION, ease: SOFT_EASE } }}
+      transition={{
+        duration: 0.48,
+        delay: Math.min(index * 0.075, 0.45),
+        ease: SOFT_EASE,
+      }}
       style={{
         backgroundColor: style.bg,
         boxShadow: style.glow,
@@ -92,7 +106,7 @@ const JarCard = memo(function JarCard({
           <motion.div
             initial={{ scaleX: 0 }}
             animate={{ scaleX: Math.max(0, Math.min(1, progress / 100)) }}
-            transition={{ type: 'spring', stiffness: 280, damping: 28 }}
+            transition={{ duration: 0.55, ease: DECEL_EASE }}
             className="h-full w-full origin-left rounded-full bg-white/85"
           />
         </div>
@@ -100,33 +114,31 @@ const JarCard = memo(function JarCard({
 
       {/* Bottom Left Buttons: + and Gear */}
       <div className="relative z-10 mt-4 flex items-center gap-2.5">
-        <motion.button
+        <button
           type="button"
-          whileTap={{ scale: 0.92 }}
           aria-label={`Move money in ${jar.name}`}
           onClick={() => onOpenTransfer(jar)}
           style={{ backgroundColor: style.btnBg, color: style.btnText }}
-          className="flex h-11 w-11 items-center justify-center rounded-full transition-opacity hover:opacity-90"
+          className="soft-press flex h-11 w-11 items-center justify-center rounded-full transition-opacity duration-200 hover:opacity-90"
         >
           <Plus className="h-5 w-5 stroke-[2.2]" />
-        </motion.button>
+        </button>
 
-        <motion.button
+        <button
           type="button"
-          whileTap={{ scale: 0.92 }}
           aria-label={`Settings for ${jar.name}`}
           onClick={() => onOpenEdit(jar)}
           style={{ backgroundColor: style.btnBg, color: style.btnText }}
-          className="flex h-11 w-11 items-center justify-center rounded-full transition-opacity hover:opacity-90"
+          className="soft-press flex h-11 w-11 items-center justify-center rounded-full transition-opacity duration-200 hover:opacity-90"
         >
           <Settings className="h-[18px] w-[18px]" />
-        </motion.button>
+        </button>
       </div>
     </motion.div>
   );
 });
 
-export function SavingsJar({ onBack, registerBackHandler }: SavingsJarProps) {
+export const SavingsJar = memo(function SavingsJar({ onBack, registerBackHandler }: SavingsJarProps) {
   const { jars, balance, totalSavingsJar, settings, createJar, updateJar, deleteJar, transferJarMoney } =
     useMoney();
 
@@ -296,7 +308,7 @@ export function SavingsJar({ onBack, registerBackHandler }: SavingsJarProps) {
               triggerFeedback(settings.hapticsEnabled, 'tap');
               onBack();
             }}
-            className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[#1C2124]/92 text-white transition-transform hover:bg-[#242A2E] active:scale-95"
+            className="soft-press flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[#1C2124]/92 text-white transition-colors duration-200 hover:bg-[#242A2E]"
           >
             <ChevronLeft className="h-5 w-5" />
           </button>
@@ -313,7 +325,7 @@ export function SavingsJar({ onBack, registerBackHandler }: SavingsJarProps) {
                 triggerFeedback(settings.hapticsEnabled, 'tap');
                 setMenuOpen((o) => !o);
               }}
-              className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[#1C2124]/92 text-white transition-transform hover:bg-[#242A2E] active:scale-95"
+              className="soft-press flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[#1C2124]/92 text-white transition-colors duration-200 hover:bg-[#242A2E]"
             >
               <MoreHorizontal className="h-5 w-5" />
             </button>
@@ -321,9 +333,10 @@ export function SavingsJar({ onBack, registerBackHandler }: SavingsJarProps) {
             <AnimatePresence>
               {menuOpen && (
                 <motion.div
-                  initial={{ opacity: 0, y: -6, scale: 0.95 }}
+                  initial={{ opacity: 0, y: -6, scale: 0.97 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -6, scale: 0.95 }}
+                  exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                  transition={{ duration: SMALL_DURATION, ease: SOFT_EASE }}
                   className="absolute right-0 top-13 z-30 w-48 rounded-2xl border border-white/10 bg-[#1A1D21] p-1.5 shadow-lg"
                 >
                   <p className="px-3 py-1.5 text-[11px] font-medium text-[#8E959B]">
@@ -373,20 +386,22 @@ export function SavingsJar({ onBack, registerBackHandler }: SavingsJarProps) {
         </div>
         <motion.button
           type="button"
-          whileTap={{ scale: 0.95 }}
+          whileTap={SOFT_TAP}
+          transition={SOFT_TAP_TRANSITION}
           onClick={openCreateModal}
-          className="min-h-[42px] rounded-full bg-white px-4.5 py-2 text-[13px] font-semibold text-[#0B0F10] shadow-[0_0_16px_rgba(255,255,255,0.22)] transition-colors hover:bg-neutral-100"
+          className="min-h-[42px] rounded-full bg-white px-4.5 py-2 text-[13px] font-semibold text-[#0B0F10] shadow-[0_0_16px_rgba(255,255,255,0.22)] transition-colors duration-200 hover:bg-neutral-100"
         >
           + New jar
         </motion.button>
       </div>
 
-      {/* 2-Column Jar Grid */}
+      {/* Jar Card List */}
       <div className="no-scrollbar relative z-10 flex-1 touch-pan-y overflow-y-auto px-6 pb-10">
         {sortedJars.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, ease: SOFT_EASE }}
             className="mt-4 flex flex-col items-center rounded-[24px] border border-white/[0.08] bg-[#1A1D21]/92 px-6 py-12 text-center shadow-[0_0_20px_rgba(124,92,245,0.16)]"
           >
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/[0.06]">
@@ -398,7 +413,8 @@ export function SavingsJar({ onBack, registerBackHandler }: SavingsJarProps) {
             </p>
             <motion.button
               type="button"
-              whileTap={{ scale: 0.96 }}
+              whileTap={SOFT_TAP}
+              transition={SOFT_TAP_TRANSITION}
               onClick={openCreateModal}
               className="mt-5 min-h-[44px] rounded-full bg-white px-5 py-2.5 text-[13px] font-semibold text-[#0B0F10]"
             >
@@ -408,10 +424,11 @@ export function SavingsJar({ onBack, registerBackHandler }: SavingsJarProps) {
         ) : (
           <div className="space-y-4 pb-6">
             <AnimatePresence initial={false}>
-              {sortedJars.map((jar) => (
+              {sortedJars.map((jar, index) => (
                 <JarCard
                   key={jar.id}
                   jar={jar}
+                  index={index}
                   currency={settings.currency}
                   onOpenTransfer={openTransferSheet}
                   onOpenEdit={openEditModal}
@@ -430,6 +447,7 @@ export function SavingsJar({ onBack, registerBackHandler }: SavingsJarProps) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              transition={{ duration: SMALL_DURATION, ease: SOFT_EASE }}
               onClick={() => setJarModalMode(null)}
               className="absolute inset-0 bg-black/70"
             />
@@ -440,21 +458,26 @@ export function SavingsJar({ onBack, registerBackHandler }: SavingsJarProps) {
                 initial={{ y: '100%' }}
                 animate={{ y: 0 }}
                 exit={{ y: '100%' }}
-                transition={{ type: 'spring', stiffness: 360, damping: 34 }}
+                transition={{ duration: SHEET_DURATION, ease: SOFT_EASE }}
                 drag="y"
                 dragControls={jarModalDragControls}
                 dragListener={false}
                 dragConstraints={{ top: 0 }}
-                dragElastic={{ top: 0.06, bottom: 1 }}
+                dragElastic={{ top: 0.05, bottom: 0.9 }}
                 dragSnapToOrigin
+                dragTransition={{ bounceStiffness: 135, bounceDamping: 24 }}
+                onDragStart={() => {
+                  if (jarModalRef.current) jarModalRef.current.style.willChange = 'transform';
+                }}
                 onDragEnd={(_e, info: PanInfo) => {
+                  if (jarModalRef.current) jarModalRef.current.style.willChange = 'auto';
                   const sheetHeight = jarModalRef.current?.offsetHeight || 440;
                   if (info.offset.y > sheetHeight * 0.3 || info.velocity.y > 420) {
                     setJarModalMode(null);
                   }
                 }}
                 style={{ paddingBottom: 'calc(1.75rem + env(safe-area-inset-bottom))' }}
-                className="pointer-events-auto flex max-h-[88dvh] w-full flex-col rounded-t-[32px] border-t border-white/10 bg-[#14181B] px-6 pt-3 text-white shadow-2xl will-change-transform"
+                className="pointer-events-auto flex max-h-[88dvh] w-full flex-col rounded-t-[32px] border-t border-white/10 bg-[#14181B] px-6 pt-3 text-white shadow-2xl"
               >
                 <div
                   onPointerDown={(e) => jarModalDragControls.start(e)}
@@ -568,8 +591,9 @@ export function SavingsJar({ onBack, registerBackHandler }: SavingsJarProps) {
                   <div className="mt-6 space-y-2.5">
                     <motion.button
                       type="submit"
-                      whileTap={{ scale: 0.98 }}
-                      className="min-h-[48px] w-full rounded-full bg-white py-3 text-[15px] font-semibold text-[#0B0F10] transition-colors hover:bg-neutral-100"
+                      whileTap={SOFT_TAP}
+                      transition={SOFT_TAP_TRANSITION}
+                      className="min-h-[48px] w-full rounded-full bg-white py-3 text-[15px] font-semibold text-[#0B0F10] transition-colors duration-200 hover:bg-neutral-100"
                     >
                       {jarModalMode === 'create' ? 'Create Jar' : 'Save Changes'}
                     </motion.button>
@@ -580,7 +604,7 @@ export function SavingsJar({ onBack, registerBackHandler }: SavingsJarProps) {
                           <button
                             type="button"
                             onClick={() => setConfirmDelete(true)}
-                            className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full border border-red-500/25 bg-red-500/10 py-2.5 text-[14px] font-medium text-red-400 transition-colors hover:bg-red-500/15"
+                            className="soft-press flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full border border-red-500/25 bg-red-500/10 py-2.5 text-[14px] font-medium text-red-400 transition-colors duration-200 hover:bg-red-500/15"
                           >
                             <Trash2 className="h-4 w-4" />
                             <span>Delete Jar</span>
@@ -596,14 +620,14 @@ export function SavingsJar({ onBack, registerBackHandler }: SavingsJarProps) {
                               <button
                                 type="button"
                                 onClick={() => setConfirmDelete(false)}
-                                className="flex-1 rounded-full bg-white/10 py-2 text-[13px] font-medium text-white"
+                                className="soft-press flex-1 rounded-full bg-white/10 py-2 text-[13px] font-medium text-white"
                               >
                                 Cancel
                               </button>
                               <button
                                 type="button"
                                 onClick={handleConfirmDelete}
-                                className="flex-1 rounded-full bg-red-500 py-2 text-[13px] font-semibold text-white"
+                                className="soft-press flex-1 rounded-full bg-red-500 py-2 text-[13px] font-semibold text-white"
                               >
                                 Confirm Delete
                               </button>
@@ -628,6 +652,7 @@ export function SavingsJar({ onBack, registerBackHandler }: SavingsJarProps) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              transition={{ duration: SMALL_DURATION, ease: SOFT_EASE }}
               onClick={() => setTransferJar(null)}
               className="absolute inset-0 bg-black/70"
             />
@@ -637,21 +662,26 @@ export function SavingsJar({ onBack, registerBackHandler }: SavingsJarProps) {
                 initial={{ y: '100%' }}
                 animate={{ y: 0 }}
                 exit={{ y: '100%' }}
-                transition={{ type: 'spring', stiffness: 360, damping: 34 }}
+                transition={{ duration: SHEET_DURATION, ease: SOFT_EASE }}
                 drag="y"
                 dragControls={transferSheetDragControls}
                 dragListener={false}
                 dragConstraints={{ top: 0 }}
-                dragElastic={{ top: 0.06, bottom: 1 }}
+                dragElastic={{ top: 0.05, bottom: 0.9 }}
                 dragSnapToOrigin
+                dragTransition={{ bounceStiffness: 135, bounceDamping: 24 }}
+                onDragStart={() => {
+                  if (transferSheetRef.current) transferSheetRef.current.style.willChange = 'transform';
+                }}
                 onDragEnd={(_e, info: PanInfo) => {
+                  if (transferSheetRef.current) transferSheetRef.current.style.willChange = 'auto';
                   const sheetHeight = transferSheetRef.current?.offsetHeight || 480;
                   if (info.offset.y > sheetHeight * 0.3 || info.velocity.y > 420) {
                     setTransferJar(null);
                   }
                 }}
                 style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}
-                className="pointer-events-auto w-full rounded-t-[32px] bg-white px-5 pt-3 text-[#111827] shadow-2xl will-change-transform"
+                className="pointer-events-auto w-full rounded-t-[32px] bg-white px-5 pt-3 text-[#111827] shadow-2xl"
               >
                 <div
                   onPointerDown={(e) => {
@@ -682,7 +712,7 @@ export function SavingsJar({ onBack, registerBackHandler }: SavingsJarProps) {
                             {active && (
                               <motion.span
                                 layoutId="jar-transfer-pill"
-                                transition={{ type: 'spring', stiffness: 460, damping: 34 }}
+                                transition={SOFT_PILL_SPRING}
                                 className="absolute inset-0 rounded-full bg-white shadow-xs"
                               />
                             )}
@@ -738,15 +768,14 @@ export function SavingsJar({ onBack, registerBackHandler }: SavingsJarProps) {
                   <div className="grid grid-cols-3 gap-1.5">
                     {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'backspace'].map(
                       (k) => (
-                        <motion.button
+                        <button
                           key={k}
                           type="button"
-                          whileTap={{ scale: 0.94 }}
                           onClick={() => handleTransferKey(k)}
-                          className="flex h-12 items-center justify-center rounded-[14px] bg-white text-[20px] font-normal text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.03)]"
+                          className="soft-press flex h-12 items-center justify-center rounded-[14px] bg-white text-[20px] font-normal text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.03)]"
                         >
                           {k === 'backspace' ? <Delete className="h-5 w-5" /> : k}
-                        </motion.button>
+                        </button>
                       )
                     )}
                   </div>
@@ -754,7 +783,8 @@ export function SavingsJar({ onBack, registerBackHandler }: SavingsJarProps) {
 
                 <motion.button
                   type="button"
-                  whileTap={{ scale: 0.97 }}
+                  whileTap={SOFT_TAP}
+                  transition={SOFT_TAP_TRANSITION}
                   disabled={transferAmount <= 0 || transferExceedsJar}
                   onClick={handleConfirmTransfer}
                   className="mt-3 min-h-[48px] w-full rounded-full bg-[#1ED82B] py-3 text-[15px] font-semibold text-white shadow-[0_0_16px_rgba(30,216,43,0.34)] transition-opacity disabled:opacity-40"
@@ -770,4 +800,4 @@ export function SavingsJar({ onBack, registerBackHandler }: SavingsJarProps) {
       </AnimatePresence>
     </div>
   );
-}
+});

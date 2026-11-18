@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  animate,
   AnimatePresence,
   motion,
   PanInfo,
@@ -11,6 +12,15 @@ import { AlertTriangle, Check, ChevronDown, ChevronsRight, Delete } from 'lucide
 import { useMoney } from '../context/MoneyContext';
 import { ConfirmationData } from '../types/money';
 import { formatCurrency, triggerFeedback } from '../utils/format';
+import {
+  GENTLE_DRAG_SPRING,
+  SHEET_DURATION,
+  SMALL_DURATION,
+  SOFT_EASE,
+  SOFT_PILL_SPRING,
+  SOFT_TAP,
+  SOFT_TAP_TRANSITION,
+} from '../utils/motion';
 
 interface EntrySheetProps {
   isOpen: boolean;
@@ -21,7 +31,7 @@ interface EntrySheetProps {
   registerBackHandler?: (fn: (() => boolean) | null) => void;
 }
 
-export function EntrySheet({
+export const EntrySheet = memo(function EntrySheet({
   isOpen,
   isConfirming,
   initialMode,
@@ -45,6 +55,10 @@ export function EntrySheet({
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const pillBtnRef = useRef<HTMLButtonElement>(null);
+  const swipeBoxRef = useRef<HTMLDivElement>(null);
+  const swipeContentRef = useRef<HTMLDivElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const swipeAnimRef = useRef<ReturnType<typeof animate> | null>(null);
   const [dropdownTop, setDropdownTop] = useState<number>(138);
 
   const activeCategories = useMemo(() => {
@@ -227,29 +241,70 @@ export function EntrySheet({
       }
     }
 
+    const rect = swipeBoxRef.current?.getBoundingClientRect();
     onConfirm({
       amount: tx.amount,
       type: tx.type,
       category: tx.category,
       note: tx.note,
       subtitle,
+      originRect: rect
+        ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
+        : undefined,
     });
   };
 
+  const resetSwipeSoftly = () => {
+    swipeAnimRef.current?.stop();
+    if (swipeContentRef.current) swipeContentRef.current.style.willChange = 'transform';
+    swipeAnimRef.current = animate(swipeX, 0, {
+      ...GENTLE_DRAG_SPRING,
+      onComplete: () => {
+        if (swipeContentRef.current) swipeContentRef.current.style.willChange = 'auto';
+      },
+    });
+  };
+
+  const handleSwipeStart = () => {
+    if (dropdownOpen || isConfirming) return;
+    swipeAnimRef.current?.stop();
+    if (swipeContentRef.current) swipeContentRef.current.style.willChange = 'transform';
+  };
+
+  const handleSwipePan = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    if (dropdownOpen || isConfirming) return;
+    const raw = info.offset.x;
+    let next = raw;
+    if (raw <= 0) {
+      next = 0;
+    } else if (raw > 200) {
+      next = 200 + (raw - 200) * 0.2;
+    }
+    swipeX.set(next);
+  };
+
   const handleSwipeEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    if (dropdownOpen || isConfirming) return;
+    const current = swipeX.get();
+
     if (numericAmount <= 0) {
+      resetSwipeSoftly();
       triggerFeedback(settings.hapticsEnabled, 'error');
       setShakeTrigger((c) => c + 1);
       return;
     }
 
-    const passedThreshold = info.offset.x > 100 || (info.velocity.x > 340 && info.offset.x > 40);
+    const passedThreshold = current >= 100 || (info.velocity.x > 300 && current > 40);
     if (passedThreshold) {
+      if (swipeContentRef.current) swipeContentRef.current.style.willChange = 'auto';
       completeTransaction();
+    } else {
+      resetSwipeSoftly();
     }
   };
 
   const handleSheetDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    if (sheetRef.current) sheetRef.current.style.willChange = 'auto';
     if (info.offset.y > 120 || info.velocity.y > 500) {
       onClose();
     }
@@ -264,7 +319,7 @@ export function EntrySheet({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.16 }}
+            transition={{ duration: SMALL_DURATION, ease: SOFT_EASE }}
             onClick={() => {
               if (!isConfirming) onClose();
             }}
@@ -274,23 +329,28 @@ export function EntrySheet({
           {/* Phone-contained bottom sheet on >500px, edge-to-edge on phones */}
           <div className="pointer-events-none relative z-10 flex h-full w-full items-end overflow-hidden min-[501px]:max-w-[420px] min-[501px]:rounded-[38px]">
             <motion.div
+              ref={sheetRef}
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={
                 isConfirming
-                  ? { opacity: 0, transition: { duration: 0.08 } }
-                  : { y: '100%', transition: { type: 'spring', stiffness: 400, damping: 36 } }
+                  ? { opacity: 0, transition: { duration: 0.22, ease: SOFT_EASE } }
+                  : { y: '100%', transition: { duration: SHEET_DURATION, ease: SOFT_EASE } }
               }
-              transition={{ type: 'spring', stiffness: 420, damping: 36, mass: 0.85 }}
+              transition={{ duration: SHEET_DURATION, ease: SOFT_EASE }}
               drag={isConfirming ? false : 'y'}
               dragControls={sheetDragControls}
               dragListener={false}
               dragConstraints={{ top: 0, bottom: 520 }}
-              dragElastic={{ top: 0, bottom: 0.35 }}
+              dragElastic={{ top: 0, bottom: 0.32 }}
               dragSnapToOrigin
+              dragTransition={{ bounceStiffness: 135, bounceDamping: 24 }}
+              onDragStart={() => {
+                if (sheetRef.current) sheetRef.current.style.willChange = 'transform';
+              }}
               onDragEnd={handleSheetDragEnd}
               style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}
-              className="pointer-events-auto relative flex max-h-[92%] w-full flex-col rounded-t-[32px] bg-white px-5 pt-3 text-[#111827] shadow-2xl will-change-transform"
+              className="pointer-events-auto relative flex max-h-[92%] w-full flex-col rounded-t-[32px] bg-white px-5 pt-3 text-[#111827] shadow-2xl"
             >
               {/* Drag Handle + Mode Toggle Header (vertical drag zone) */}
               <div
@@ -323,7 +383,7 @@ export function EntrySheet({
                           {active && (
                             <motion.span
                               layoutId="entry-mode-pill"
-                              transition={{ type: 'spring', stiffness: 520, damping: 38, mass: 0.7 }}
+                              transition={SOFT_PILL_SPRING}
                               className="absolute inset-0 rounded-full bg-[#F1F3F5]"
                             />
                           )}
@@ -339,10 +399,10 @@ export function EntrySheet({
               <AnimatePresence initial={false}>
                 {exceedsBalance && (
                   <motion.div
-                    initial={{ opacity: 0, y: -4, scale: 0.96 }}
+                    initial={{ opacity: 0, y: -4, scale: 0.98 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -4, scale: 0.96 }}
-                    transition={{ duration: 0.14, ease: 'easeOut' }}
+                    exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                    transition={{ duration: SMALL_DURATION, ease: SOFT_EASE }}
                     className="px-1"
                   >
                     <div className="mt-1 flex items-center justify-center gap-2 rounded-2xl border border-red-200/80 bg-red-50/90 px-3.5 py-2 text-[12px] font-medium text-red-700">
@@ -364,18 +424,19 @@ export function EntrySheet({
                 className="relative my-2 flex flex-1 flex-col items-center justify-center"
               >
                 {/* Fixed-Size Rounded Clipped Box */}
-                <div className="relative flex min-h-[188px] w-full flex-1 flex-col items-center justify-center overflow-hidden rounded-[28px] py-6">
+                <div
+                  ref={swipeBoxRef}
+                  className="relative flex min-h-[188px] w-full flex-1 flex-col items-center justify-center overflow-hidden rounded-[28px] py-6"
+                >
                   {/* Fixed-Size Green Box (opacity 0 before swipe, rises smoothly while swiping) */}
                   {!isConfirming && (
                     <motion.div
-                      layoutId="confirm-green-morph"
                       aria-hidden="true"
                       style={{
-                        borderRadius: 28,
                         opacity: numericAmount > 0 ? greenOpacity : 0,
                         boxShadow: '0 8px 24px rgba(30, 216, 43, 0.24)',
                       }}
-                      className="pointer-events-none absolute inset-0 flex items-center justify-start bg-[#1ED82B] pl-7 will-change-transform"
+                      className="pointer-events-none absolute inset-0 flex items-center justify-start rounded-[28px] bg-[#1ED82B] pl-7"
                     >
                       <motion.div
                         style={{ opacity: checkPreviewOpacity }}
@@ -387,28 +448,27 @@ export function EntrySheet({
                     </motion.div>
                   )}
 
-                  {/* Draggable Middle Content (clipped cleanly inside the fixed rounded box) */}
+                  {/* 1:1 Pan-Tracked Middle Content (clipped cleanly inside the fixed rounded box) */}
                   <motion.div
+                    ref={swipeContentRef}
                     key={shakeTrigger}
                     animate={
-                      shakeTrigger > 0 ? { x: [0, -10, 10, -7, 7, -3, 3, 0] } : { x: 0 }
+                      shakeTrigger > 0 ? { x: [0, -8, 8, -5, 5, -2, 2, 0] } : { x: 0 }
                     }
-                    transition={{ duration: 0.32 }}
-                    drag={dropdownOpen || isConfirming ? false : 'x'}
-                    dragConstraints={{ left: 0, right: 240 }}
-                    dragElastic={{ left: 0.06, right: 0.35 }}
-                    dragSnapToOrigin
+                    transition={{ duration: 0.36, ease: SOFT_EASE }}
+                    onPanStart={handleSwipeStart}
+                    onPan={handleSwipePan}
+                    onPanEnd={handleSwipeEnd}
                     style={{ x: swipeX }}
-                    onDragEnd={handleSwipeEnd}
-                    className="relative z-10 flex w-full cursor-grab flex-col items-center justify-center select-none active:cursor-grabbing"
+                    className="relative z-10 flex w-full cursor-grab touch-pan-y flex-col items-center justify-center select-none active:cursor-grabbing"
                   >
                     {/* Large Amount Readout */}
                     <motion.div
                       key={mode}
-                      initial={{ opacity: 0.65, y: 3 }}
+                      initial={{ opacity: 0.65, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.14 }}
-                      className={`flex items-baseline justify-center gap-2.5 text-[44px] leading-none font-bold tracking-tight tabular-nums transition-colors duration-150 ${
+                      transition={{ duration: SMALL_DURATION, ease: SOFT_EASE }}
+                      className={`flex items-baseline justify-center gap-2.5 text-[44px] leading-none font-bold tracking-tight tabular-nums transition-colors duration-250 ${
                         isEmpty ? 'text-[#CBD5E1]' : 'text-[#111827]'
                       }`}
                     >
@@ -421,8 +481,8 @@ export function EntrySheet({
                       <motion.button
                         ref={pillBtnRef}
                         type="button"
-                        whileTap={{ scale: 0.95 }}
-                        transition={{ type: 'spring', stiffness: 700, damping: 32 }}
+                        whileTap={SOFT_TAP}
+                        transition={SOFT_TAP_TRANSITION}
                         onPointerDown={(e) => e.stopPropagation()}
                         onClick={() => {
                           triggerFeedback(settings.hapticsEnabled, 'tap');
@@ -440,27 +500,27 @@ export function EntrySheet({
                             : selectedCategory?.name}
                         </span>
                         <ChevronDown
-                          className={`h-4 w-4 text-[#6B7280] transition-transform duration-150 ${
+                          className={`h-4 w-4 text-[#6B7280] transition-transform duration-250 ease-[cubic-bezier(0.4,0,0.2,1)] ${
                             dropdownOpen ? 'rotate-180' : ''
                           }`}
                         />
                       </motion.button>
                     </div>
 
-                    {/* Subtle Swipe-Right Hint once amount > 0 */}
+                    {/* Subtle Swipe-Right Hint once amount > 0 (paused when sheet closed/confirming) */}
                     <AnimatePresence>
-                      {numericAmount > 0 && (
+                      {isOpen && !isConfirming && numericAmount > 0 && (
                         <motion.div
                           initial={{ opacity: 0, y: 4 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: 2 }}
-                          transition={{ duration: 0.15 }}
+                          transition={{ duration: SMALL_DURATION, ease: SOFT_EASE }}
                           className="mt-5 flex items-center gap-1.5 text-[12px] font-medium text-[#9CA3AF]"
                         >
                           <span>Swipe right to confirm</span>
                           <motion.span
                             animate={{ x: [0, 5, 0] }}
-                            transition={{ repeat: Infinity, duration: 1.4, ease: 'easeInOut' }}
+                            transition={{ repeat: Infinity, duration: 2.2, ease: 'easeInOut' }}
                             className="inline-flex text-[#16A34A]"
                           >
                             <ChevronsRight className="h-4 w-4" />
@@ -475,10 +535,10 @@ export function EntrySheet({
                 <AnimatePresence>
                   {dropdownOpen && (
                     <motion.div
-                      initial={{ opacity: 0, y: -6, scale: 0.96 }}
+                      initial={{ opacity: 0, y: -6, scale: 0.97 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -4, scale: 0.96 }}
-                      transition={{ type: 'spring', stiffness: 500, damping: 34 }}
+                      exit={{ opacity: 0, y: -4, scale: 0.97 }}
+                      transition={{ duration: SMALL_DURATION, ease: SOFT_EASE }}
                       onPointerDown={(e) => e.stopPropagation()}
                       style={{ top: dropdownTop }}
                       className="absolute left-1/2 z-30 w-[264px] -translate-x-1/2 rounded-[24px] border border-gray-100 bg-white p-2 shadow-xl"
@@ -546,21 +606,19 @@ export function EntrySheet({
                 <div className="grid grid-cols-3 gap-2">
                   {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'backspace'].map(
                     (key) => (
-                      <motion.button
+                      <button
                         key={key}
                         type="button"
-                        whileTap={{ scale: 0.92 }}
-                        transition={{ type: 'spring', stiffness: 750, damping: 30 }}
                         aria-label={key === 'backspace' ? 'Backspace' : key}
                         onClick={() => handleKeyPress(key)}
-                        className="flex h-[56px] items-center justify-center rounded-[18px] bg-white text-[22px] font-normal text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:bg-gray-50 active:bg-gray-100"
+                        className="soft-press flex h-[56px] items-center justify-center rounded-[18px] bg-white text-[22px] font-normal text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors duration-200 hover:bg-gray-50 active:bg-gray-100"
                       >
                         {key === 'backspace' ? (
                           <Delete className="h-5 w-5 text-[#1F2937]" />
                         ) : (
                           key
                         )}
-                      </motion.button>
+                      </button>
                     )
                   )}
                 </div>
@@ -571,4 +629,4 @@ export function EntrySheet({
       )}
     </AnimatePresence>
   );
-}
+});

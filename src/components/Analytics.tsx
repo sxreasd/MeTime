@@ -4,6 +4,13 @@ import { ArrowDown, ArrowUp, ChevronLeft, MoreHorizontal } from 'lucide-react';
 import { useMoney } from '../context/MoneyContext';
 import { AnalyticsPeriod } from '../types/money';
 import { computeAnalytics, formatCurrency, triggerFeedback } from '../utils/format';
+import {
+  DECEL_EASE,
+  SMALL_DURATION,
+  SOFT_EASE,
+  SOFT_PILL_SPRING,
+  SOFT_SPRING,
+} from '../utils/motion';
 import { AnimatedNumber } from './AnimatedNumber';
 
 interface AnalyticsProps {
@@ -112,7 +119,7 @@ const AnalyticsChart = memo(function AnalyticsChart({
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.22, ease: 'easeOut' }}
+      transition={{ duration: SMALL_DURATION, ease: SOFT_EASE }}
       className="mt-4 select-none"
     >
       <svg
@@ -158,7 +165,7 @@ const AnalyticsChart = memo(function AnalyticsChart({
         {/* Highlighted Vertical Band (transform only) */}
         <motion.rect
           animate={{ x: activeCoord.x - 16 }}
-          transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+          transition={SOFT_SPRING}
           y={36}
           width={32}
           height={baselineY - 36}
@@ -182,7 +189,7 @@ const AnalyticsChart = memo(function AnalyticsChart({
         {/* Active Dot (crisp outer halo instead of Gaussian blur filter) */}
         <motion.g
           animate={{ x: activeCoord.x, y: activeCoord.y }}
-          transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+          transition={SOFT_SPRING}
         >
           <circle r="10" fill="#4ADE80" fillOpacity="0.2" />
           <circle r="4.5" fill="#FFFFFF" stroke="#4ADE80" strokeWidth="2.2" />
@@ -191,7 +198,7 @@ const AnalyticsChart = memo(function AnalyticsChart({
         {/* Green Tooltip Bubble */}
         <motion.g
           animate={{ x: clampedCenter, y: bubbleY }}
-          transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+          transition={SOFT_SPRING}
           style={{ filter: 'drop-shadow(0 0 10px rgba(94, 235, 141, 0.38))' }}
         >
           <rect
@@ -245,7 +252,7 @@ const AnalyticsChart = memo(function AnalyticsChart({
   );
 });
 
-export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
+export const Analytics = memo(function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
   const {
     transactions,
     spendCategories,
@@ -329,7 +336,7 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
               triggerFeedback(settings.hapticsEnabled, 'tap');
               onBack();
             }}
-            className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[#1C2124]/92 text-white transition-transform hover:bg-[#242A2E] active:scale-95"
+            className="soft-press flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[#1C2124]/92 text-white transition-colors duration-200 hover:bg-[#242A2E]"
           >
             <ChevronLeft className="h-5 w-5" />
           </button>
@@ -346,7 +353,7 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
                 triggerFeedback(settings.hapticsEnabled, 'tap');
                 setMenuOpen((o) => !o);
               }}
-              className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[#1C2124]/92 text-white transition-transform hover:bg-[#242A2E] active:scale-95"
+              className="soft-press flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[#1C2124]/92 text-white transition-colors duration-200 hover:bg-[#242A2E]"
             >
               <MoreHorizontal className="h-5 w-5" />
             </button>
@@ -354,9 +361,10 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
             <AnimatePresence>
               {menuOpen && (
                 <motion.div
-                  initial={{ opacity: 0, y: -6, scale: 0.95 }}
+                  initial={{ opacity: 0, y: -6, scale: 0.97 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -6, scale: 0.95 }}
+                  exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                  transition={{ duration: SMALL_DURATION, ease: SOFT_EASE }}
                   className="absolute right-0 top-13 z-30 w-52 rounded-2xl border border-white/10 bg-[#1A1D21] p-1.5 shadow-lg"
                 >
                   <button
@@ -404,7 +412,7 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
                   {active && (
                     <motion.span
                       layoutId="analytics-period-pill"
-                      transition={{ type: 'spring', stiffness: 460, damping: 34 }}
+                      transition={SOFT_PILL_SPRING}
                       className="absolute inset-0 rounded-full bg-white"
                     />
                   )}
@@ -471,7 +479,7 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
                   triggerFeedback(settings.hapticsEnabled, 'tap');
                   setPeriod(card.id);
                 }}
-                className={`rounded-[20px] border p-3.5 text-left transition-colors active:scale-[0.98] ${
+                className={`soft-press rounded-[20px] border p-3.5 text-left transition-colors duration-200 ${
                   active
                     ? 'border-white/20 bg-[#20252B]'
                     : 'border-white/[0.06] bg-[#1A1D21]/92 hover:bg-[#1F2328]'
@@ -500,7 +508,7 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
           </div>
 
           <div className="space-y-4">
-            {visibleBreakdown.map((cat) => (
+            {visibleBreakdown.map((cat, idx) => (
               <div key={cat.name}>
                 <div className="mb-1.5 flex items-center justify-between gap-2 text-[13px]">
                   <div className="flex min-w-0 items-center gap-2">
@@ -526,7 +534,11 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
                   <motion.div
                     initial={{ scaleX: 0 }}
                     animate={{ scaleX: Math.max(0, Math.min(1, cat.percentage / 100)) }}
-                    transition={{ type: 'spring', stiffness: 260, damping: 28 }}
+                    transition={{
+                      duration: 0.55,
+                      delay: Math.min(idx * 0.065, 0.42),
+                      ease: DECEL_EASE,
+                    }}
                     className="h-full w-full origin-left rounded-full"
                     style={{
                       backgroundColor: cat.color,
@@ -541,4 +553,4 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
       </div>
     </div>
   );
-}
+});

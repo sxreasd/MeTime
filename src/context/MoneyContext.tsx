@@ -8,6 +8,7 @@ import {
   Transaction,
   TransactionType,
 } from '../types/money';
+import { ParsedImportPayload } from '../utils/dataTransfer';
 import { isSameDay, startOfMonth, startOfWeekMonday } from '../utils/format';
 
 const STORAGE_KEY = 'metime_money_tracker_v1';
@@ -57,6 +58,44 @@ interface PersistedState {
   settings: Settings;
 }
 
+function normalizeCategoryList(rawCats: CategoryConfig[]): CategoryConfig[] {
+  const seenCatKeys = new Set<string>();
+  const normalizedCats: CategoryConfig[] = [];
+  for (const cat of rawCats) {
+    const cleanName = typeof cat?.name === 'string' ? cat.name.trim() : '';
+    const kind = cat?.kind === 'add' ? 'add' : 'spend';
+    if (!cleanName) continue;
+    const key = `${kind}:${cleanName.toLowerCase()}`;
+    if (seenCatKeys.has(key)) continue;
+    seenCatKeys.add(key);
+    normalizedCats.push({
+      ...cat,
+      name: cleanName,
+      kind,
+      isOthers: Boolean(cat.isOthers || cleanName.toLowerCase() === 'others'),
+    });
+  }
+  if (!normalizedCats.some((c) => c.kind === 'spend' && c.isOthers)) {
+    normalizedCats.push({
+      id: 'cat_spend_others',
+      name: 'Others',
+      color: '#10B981',
+      kind: 'spend',
+      isOthers: true,
+    });
+  }
+  if (!normalizedCats.some((c) => c.kind === 'add' && c.isOthers)) {
+    normalizedCats.push({
+      id: 'cat_add_others',
+      name: 'Others',
+      color: '#10B981',
+      kind: 'add',
+      isOthers: true,
+    });
+  }
+  return normalizedCats;
+}
+
 function getInitialState(): PersistedState {
   if (typeof window !== 'undefined') {
     try {
@@ -97,40 +136,7 @@ function getInitialState(): PersistedState {
           Array.isArray(parsed.categories) && parsed.categories.length > 0
             ? parsed.categories
             : DEFAULT_CATEGORIES;
-        const seenCatKeys = new Set<string>();
-        const normalizedCats: CategoryConfig[] = [];
-        for (const cat of rawCats) {
-          const cleanName = typeof cat?.name === 'string' ? cat.name.trim() : '';
-          const kind = cat?.kind === 'add' ? 'add' : 'spend';
-          if (!cleanName) continue;
-          const key = `${kind}:${cleanName.toLowerCase()}`;
-          if (seenCatKeys.has(key)) continue;
-          seenCatKeys.add(key);
-          normalizedCats.push({
-            ...cat,
-            name: cleanName,
-            kind,
-            isOthers: Boolean(cat.isOthers || cleanName.toLowerCase() === 'others'),
-          });
-        }
-        if (!normalizedCats.some((c) => c.kind === 'spend' && c.isOthers)) {
-          normalizedCats.push({
-            id: 'cat_spend_others',
-            name: 'Others',
-            color: '#10B981',
-            kind: 'spend',
-            isOthers: true,
-          });
-        }
-        if (!normalizedCats.some((c) => c.kind === 'add' && c.isOthers)) {
-          normalizedCats.push({
-            id: 'cat_add_others',
-            name: 'Others',
-            color: '#10B981',
-            kind: 'add',
-            isOthers: true,
-          });
-        }
+        const normalizedCats = normalizeCategoryList(rawCats);
 
         return {
           transactions: migratedTxs,
@@ -171,6 +177,14 @@ export interface DeletedTxBackup {
   index: number;
 }
 
+export interface ImportDataSummary {
+  transactionsAdded: number;
+  jarsAdded: number;
+  categoriesAdded: number;
+  settingsUpdated: boolean;
+  totalImported: number;
+}
+
 interface MoneyContextValue {
   transactions: Transaction[];
   jars: Jar[];
@@ -208,6 +222,8 @@ interface MoneyContextValue {
   resetAllData: () => void;
   exportJSON: () => string;
   exportCSV: () => string;
+  hasUserData: boolean;
+  importData: (payload: ParsedImportPayload, mode: 'replace' | 'merge') => ImportDataSummary;
 }
 
 const MoneyContext = createContext<MoneyContextValue | null>(null);
@@ -643,6 +659,142 @@ export function MoneyProvider({ children }: { children: React.ReactNode }) {
     return [header.join(','), ...rows].join('\n');
   };
 
+  const hasUserData = useMemo(() => {
+    if (state.transactions.length > 0 || state.jars.length > 0) return true;
+    if (state.settings.startingBalance !== 0 || state.settings.username.trim().length > 0) {
+      return true;
+    }
+    if (state.categories.length !== DEFAULT_CATEGORIES.length) return true;
+    return state.categories.some(
+      (c, i) =>
+        c.id !== DEFAULT_CATEGORIES[i]?.id ||
+        c.name !== DEFAULT_CATEGORIES[i]?.name ||
+        c.color !== DEFAULT_CATEGORIES[i]?.color
+    );
+  }, [state]);
+
+  const sortTransactionsNewestFirst = (list: Transaction[]): Transaction[] =>
+    [...list].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+  const importData: MoneyContextValue['importData'] = (payload, mode) => {
+    const incomingTxs = payload.transactions ?? [];
+    const incomingJars = payload.jars ?? [];
+    const incomingCats = payload.categories ?? [];
+
+    if (mode === 'replace') {
+      const dedupedTxs: Transaction[] = [];
+      const seenTxIds = new Set<string>();
+      for (const tx of incomingTxs) {
+        if (seenTxIds.has(tx.id)) continue;
+        seenTxIds.add(tx.id);
+        dedupedTxs.push(tx);
+      }
+
+      const dedupedJars: Jar[] = [];
+      const seenJarIds = new Set<string>();
+      for (const jar of incomingJars) {
+        if (seenJarIds.has(jar.id)) continue;
+        seenJarIds.add(jar.id);
+        dedupedJars.push(jar);
+      }
+
+      const nextTxs =
+        payload.transactions !== undefined
+          ? sortTransactionsNewestFirst(dedupedTxs)
+          : state.transactions;
+      const nextJars =
+        payload.format === 'json' && payload.jars !== undefined ? dedupedJars : state.jars;
+      const nextCategories =
+        payload.format === 'json' && payload.categories !== undefined
+          ? normalizeCategoryList(incomingCats)
+          : state.categories;
+      const nextSettings =
+        payload.format === 'json' && payload.settings !== undefined
+          ? { ...DEFAULT_SETTINGS, ...payload.settings }
+          : state.settings;
+
+      setState({
+        transactions: nextTxs,
+        jars: nextJars,
+        categories: nextCategories,
+        settings: nextSettings,
+      });
+
+      const txCount = payload.transactions !== undefined ? dedupedTxs.length : 0;
+      const jarCount = payload.format === 'json' && payload.jars !== undefined ? dedupedJars.length : 0;
+      const catCount =
+        payload.format === 'json' && payload.categories !== undefined
+          ? nextCategories.length
+          : 0;
+      const settingsUpdated = Boolean(payload.format === 'json' && payload.settings);
+
+      return {
+        transactionsAdded: txCount,
+        jarsAdded: jarCount,
+        categoriesAdded: catCount,
+        settingsUpdated,
+        totalImported: txCount + jarCount + catCount,
+      };
+    }
+
+    // Merge / Append mode
+    const existingTxIds = new Set(state.transactions.map((t) => t.id));
+    const addedTxs: Transaction[] = [];
+    for (const tx of incomingTxs) {
+      if (existingTxIds.has(tx.id)) continue;
+      existingTxIds.add(tx.id);
+      addedTxs.push(tx);
+    }
+
+    const existingJarIds = new Set(state.jars.map((j) => j.id));
+    const addedJars: Jar[] = [];
+    for (const jar of incomingJars) {
+      if (existingJarIds.has(jar.id)) continue;
+      existingJarIds.add(jar.id);
+      addedJars.push(jar);
+    }
+
+    const existingCatKeys = new Set(
+      state.categories.map((c) => `${c.kind}:${c.name.trim().toLowerCase()}`)
+    );
+    const nextCategories = [...state.categories];
+    let addedCatCount = 0;
+    for (const cat of incomingCats) {
+      const key = `${cat.kind}:${cat.name.trim().toLowerCase()}`;
+      if (existingCatKeys.has(key)) continue;
+      existingCatKeys.add(key);
+      addedCatCount++;
+      const othersIdx = nextCategories.findIndex(
+        (c) => c.kind === cat.kind && (c.isOthers || c.name.toLowerCase() === 'others')
+      );
+      if (othersIdx !== -1) {
+        nextCategories.splice(othersIdx, 0, cat);
+      } else {
+        nextCategories.push(cat);
+      }
+    }
+
+    const mergedTxs = sortTransactionsNewestFirst([...addedTxs, ...state.transactions]);
+    const mergedJars = [...state.jars, ...addedJars];
+
+    setState({
+      transactions: mergedTxs,
+      jars: mergedJars,
+      categories: nextCategories,
+      settings: state.settings,
+    });
+
+    return {
+      transactionsAdded: addedTxs.length,
+      jarsAdded: addedJars.length,
+      categoriesAdded: addedCatCount,
+      settingsUpdated: false,
+      totalImported: addedTxs.length + addedJars.length + addedCatCount,
+    };
+  };
+
   return (
     <MoneyContext.Provider
       value={{
@@ -671,6 +823,8 @@ export function MoneyProvider({ children }: { children: React.ReactNode }) {
         resetAllData,
         exportJSON,
         exportCSV,
+        hasUserData,
+        importData,
       }}
     >
       {children}

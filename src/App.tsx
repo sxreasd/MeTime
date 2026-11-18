@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
+import { AnimatePresence, LayoutGroup, MotionConfig, motion } from 'motion/react';
 import { MoneyProvider } from './context/MoneyContext';
 import { AppScreen, ConfirmationData } from './types/money';
 import { INTRO_TIMING, IntroSequence, IntroStage } from './components/IntroSequence';
+import { PAGE_DURATION, SMALL_DURATION, SOFT_EASE } from './utils/motion';
 import { Home } from './components/Home';
 import { EntrySheet } from './components/EntrySheet';
 import { ConfirmScreen } from './components/ConfirmScreen';
@@ -202,12 +203,12 @@ function MeTimeAppShell() {
     };
   }, []);
 
-  // Silently close the entry sheet underneath once the green morph finishes expanding
+  // Silently close the entry sheet underneath once the green expansion covers the viewport
   useEffect(() => {
     if (!entryState.confirming) return;
     const timer = setTimeout(() => {
       setEntryState((s) => ({ ...s, open: false, confirming: false }));
-    }, 320);
+    }, 480);
     return () => clearTimeout(timer);
   }, [entryState.confirming]);
 
@@ -285,21 +286,21 @@ function MeTimeAppShell() {
                 key={screen}
                 initial={
                   isSubPage
-                    ? { x: '100%', opacity: 1 }
+                    ? { x: '100%', opacity: 0.85 }
                     : introStage === 'hidden'
                       ? false
-                      : { opacity: 0 }
+                      : { opacity: 0, y: 8 }
                 }
-                animate={{ x: 0, opacity: 1 }}
+                animate={{ x: 0, y: 0, opacity: 1 }}
                 exit={
                   isSubPage
-                    ? { x: '100%', opacity: 1 }
-                    : { opacity: 0 }
+                    ? { x: '100%', opacity: 0.85 }
+                    : { opacity: 0, y: -6 }
                 }
                 transition={
                   isSubPage
-                    ? { type: 'spring', stiffness: 420, damping: 38, mass: 0.85 }
-                    : { duration: 0.14, ease: 'easeOut' }
+                    ? { duration: PAGE_DURATION, ease: SOFT_EASE }
+                    : { duration: 0.32, ease: SOFT_EASE }
                 }
                 className={`absolute inset-0 h-full w-full ${
                   isSubPage ? 'z-20' : 'z-10'
@@ -388,6 +389,7 @@ function MeTimeAppShell() {
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 12 }}
+                transition={{ duration: SMALL_DURATION, ease: SOFT_EASE }}
                 className="pointer-events-none absolute inset-x-6 bottom-24 z-50 rounded-full border border-white/10 bg-[#1A1D21] px-4 py-2.5 text-center text-[12px] font-medium text-white shadow-lg"
               >
                 App session closed — you may close this tab.
@@ -402,8 +404,10 @@ function MeTimeAppShell() {
 
 export default function App() {
   return (
-    <MoneyProvider>
-      <MeTimeAppShell />
-    </MoneyProvider>
+    <MotionConfig reducedMotion="user">
+      <MoneyProvider>
+        <MeTimeAppShell />
+      </MoneyProvider>
+    </MotionConfig>
   );
 }

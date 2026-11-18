@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, PanInfo, useDragControls } from 'motion/react';
 import {
+  AlertTriangle,
   Check,
   ChevronLeft,
   Download,
@@ -9,11 +10,26 @@ import {
   Plus,
   RotateCcw,
   Trash2,
+  Upload,
   Volume2,
+  X,
 } from 'lucide-react';
-import { useMoney } from '../context/MoneyContext';
+import { generateRandomJarCircles, ImportDataSummary, useMoney } from '../context/MoneyContext';
 import { CategoryConfig } from '../types/money';
+import {
+  ParsedImportPayload,
+  parseImportedCSV,
+  parseImportedJSON,
+} from '../utils/dataTransfer';
 import { formatCurrency, triggerFeedback } from '../utils/format';
+import {
+  SHEET_DURATION,
+  SMALL_DURATION,
+  SOFT_EASE,
+  SOFT_PILL_SPRING,
+  SOFT_TAP,
+  SOFT_TAP_TRANSITION,
+} from '../utils/motion';
 
 interface SettingsViewProps {
   onBack: () => void;
@@ -37,7 +53,7 @@ const PRESET_PALETTE = [
 
 const CURRENCY_OPTIONS = ['₱', '$', '€', '¥', '£'];
 
-export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps) {
+export const SettingsView = memo(function SettingsView({ onBack, registerBackHandler }: SettingsViewProps) {
   const {
     settings,
     categories,
@@ -49,6 +65,8 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
     resetAllData,
     exportJSON,
     exportCSV,
+    hasUserData,
+    importData,
   } = useMoney();
 
   const [usernameInput, setUsernameInput] = useState(
@@ -57,6 +75,15 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
   const [startingInput, setStartingInput] = useState(String(settings.startingBalance));
   const [savedToast, setSavedToast] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+
+  // Import Data State
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [pendingImport, setPendingImport] = useState<{
+    fileName: string;
+    payload: ParsedImportPayload;
+  } | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Category Editor State
   const [catKindTab, setCatKindTab] = useState<'spend' | 'add'>('spend');
@@ -73,6 +100,10 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
   useEffect(() => {
     if (!registerBackHandler) return;
     registerBackHandler(() => {
+      if (pendingImport) {
+        setPendingImport(null);
+        return true;
+      }
       if (deletingCat) {
         setDeletingCat(null);
         return true;
@@ -88,11 +119,18 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
       return false;
     });
     return () => registerBackHandler(null);
-  }, [deletingCat, catModalMode, confirmReset, registerBackHandler]);
+  }, [pendingImport, deletingCat, catModalMode, confirmReset, registerBackHandler]);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
 
   const showToast = (msg: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setSavedToast(msg);
-    setTimeout(() => setSavedToast(null), 2200);
+    toastTimerRef.current = setTimeout(() => setSavedToast(null), 2600);
   };
 
   const handleSaveSettings = () => {
@@ -216,6 +254,102 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
     showToast(`Exported ${filename}`);
   };
 
+  const formatImportSuccessToast = (summary: ImportDataSummary, mode: 'replace' | 'merge') => {
+    const parts: string[] = [];
+    if (summary.transactionsAdded > 0) {
+      parts.push(
+        `${summary.transactionsAdded} ${
+          summary.transactionsAdded === 1 ? 'transaction' : 'transactions'
+        }`
+      );
+    }
+    if (summary.jarsAdded > 0) {
+      parts.push(`${summary.jarsAdded} ${summary.jarsAdded === 1 ? 'jar' : 'jars'}`);
+    }
+    if (summary.categoriesAdded > 0) {
+      parts.push(
+        `${summary.categoriesAdded} ${
+          summary.categoriesAdded === 1 ? 'category' : 'categories'
+        }`
+      );
+    }
+    if (parts.length > 0) {
+      return `Imported ${parts.join(', ')}`;
+    }
+    if (summary.settingsUpdated) {
+      return 'Restored settings from backup';
+    }
+    if (mode === 'merge') {
+      return 'No new records found (all already exist)';
+    }
+    return 'Imported 0 records';
+  };
+
+  const applyImport = (payload: ParsedImportPayload, mode: 'replace' | 'merge') => {
+    const summary = importData(payload, mode);
+    if (mode === 'replace' && payload.format === 'json' && payload.settings) {
+      if (payload.settings.username !== undefined) {
+        setUsernameInput(
+          payload.settings.username === 'MeTime User' ? '' : payload.settings.username
+        );
+      }
+      if (payload.settings.startingBalance !== undefined) {
+        setStartingInput(String(payload.settings.startingBalance));
+      }
+    }
+    setPendingImport(null);
+    setImportError(null);
+    triggerFeedback(settings.hapticsEnabled, 'confirm');
+    showToast(formatImportSuccessToast(summary, mode));
+  };
+
+  const handleImportFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Reset file input so user can re-upload the exact same file again
+    e.target.value = '';
+    if (!file) return;
+
+    setImportError(null);
+    const lowerName = file.name.toLowerCase();
+    const isJSON = lowerName.endsWith('.json') || file.type === 'application/json';
+    const isCSV =
+      lowerName.endsWith('.csv') ||
+      file.type === 'text/csv' ||
+      file.type === 'application/vnd.ms-excel';
+
+    if (!isJSON && !isCSV) {
+      triggerFeedback(settings.hapticsEnabled, 'error');
+      setImportError('Unsupported file format. Please choose a .csv or .json file.');
+      return;
+    }
+
+    let text: string;
+    try {
+      text = await file.text();
+    } catch {
+      triggerFeedback(settings.hapticsEnabled, 'error');
+      setImportError('Unable to read the selected file.');
+      return;
+    }
+
+    const result = isJSON
+      ? parseImportedJSON(text, generateRandomJarCircles)
+      : parseImportedCSV(text, generateRandomJarCircles);
+
+    if (!result.ok) {
+      triggerFeedback(settings.hapticsEnabled, 'error');
+      setImportError(result.error);
+      return;
+    }
+
+    if (hasUserData) {
+      triggerFeedback(settings.hapticsEnabled, 'tap');
+      setPendingImport({ fileName: file.name, payload: result.data });
+    } else {
+      applyImport(result.data, 'replace');
+    }
+  };
+
   const isEditingOthers = Boolean(
     editingCat && (editingCat.isOthers || editingCat.name.toLowerCase() === 'others')
   );
@@ -235,7 +369,7 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
               triggerFeedback(settings.hapticsEnabled, 'tap');
               onBack();
             }}
-            className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[#1C2124]/85 text-white transition-transform hover:bg-[#242A2E] active:scale-95"
+            className="soft-press flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[#1C2124]/85 text-white transition-colors duration-200 hover:bg-[#242A2E]"
           >
             <ChevronLeft className="h-5 w-5" />
           </button>
@@ -250,16 +384,6 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
 
       {/* Scrollable Content */}
       <div className="no-scrollbar relative z-10 flex-1 space-y-4 overflow-y-auto px-6 pt-2 pb-10">
-        {savedToast && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex items-center justify-center gap-2 rounded-2xl border border-[#1ED82B]/35 bg-[#1ED82B]/15 px-4 py-2.5 text-[13px] font-medium text-[#6EEFA2] shadow-[0_0_16px_rgba(30,216,43,0.2)]"
-          >
-            <Check className="h-4 w-4" />
-            <span>{savedToast}</span>
-          </motion.div>
-        )}
 
         {/* Username & Balance Card */}
         <section className="space-y-4 rounded-[24px] border border-white/[0.08] bg-[#161922]/88 p-5 shadow-[0_0_20px_rgba(99,75,196,0.12)]">
@@ -318,7 +442,8 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
 
           <motion.button
             type="button"
-            whileTap={{ scale: 0.97 }}
+            whileTap={SOFT_TAP}
+            transition={SOFT_TAP_TRANSITION}
             onClick={handleSaveSettings}
             className="min-h-[44px] w-full rounded-full bg-white py-2.5 text-[14px] font-semibold text-[#0B0F10] shadow-[0_0_14px_rgba(255,255,255,0.18)]"
           >
@@ -371,9 +496,10 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
 
             <motion.button
               type="button"
-              whileTap={{ scale: 0.95 }}
+              whileTap={SOFT_TAP}
+              transition={SOFT_TAP_TRANSITION}
               onClick={openAddCategory}
-              className="flex min-h-[36px] shrink-0 items-center gap-1 rounded-full bg-white px-3.5 py-1.5 text-[12px] font-semibold text-[#0B0F10] shadow-[0_0_14px_rgba(255,255,255,0.2)] transition-colors hover:bg-neutral-100"
+              className="flex min-h-[36px] shrink-0 items-center gap-1 rounded-full bg-white px-3.5 py-1.5 text-[12px] font-semibold text-[#0B0F10] shadow-[0_0_14px_rgba(255,255,255,0.2)] transition-colors duration-200 hover:bg-neutral-100"
             >
               <Plus className="h-3.5 w-3.5 stroke-[2.5]" />
               <span>Add category</span>
@@ -397,7 +523,7 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
                     triggerFeedback(settings.hapticsEnabled, 'tap');
                     setCatKindTab(tab.id);
                   }}
-                  className={`relative rounded-full px-4 py-1.5 text-[12px] transition-colors ${
+                  className={`relative rounded-full px-4 py-1.5 text-[12px] transition-colors duration-200 ${
                     active
                       ? 'font-semibold text-[#0B0F10]'
                       : 'font-medium text-[#8E959B] hover:text-white'
@@ -406,7 +532,7 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
                   {active && (
                     <motion.span
                       layoutId="settings-cat-kind-pill"
-                      transition={{ type: 'spring', stiffness: 460, damping: 34 }}
+                      transition={SOFT_PILL_SPRING}
                       className="absolute inset-0 rounded-full bg-white"
                     />
                   )}
@@ -454,7 +580,7 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
                       type="button"
                       aria-label={`Edit ${cat.name}`}
                       onClick={() => openEditCategory(cat)}
-                      className="flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.06] text-[#C8CFD5] transition-colors hover:bg-white/[0.12] hover:text-white active:scale-95"
+                      className="soft-press flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.06] text-[#C8CFD5] transition-colors duration-200 hover:bg-white/[0.12] hover:text-white"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
@@ -467,7 +593,7 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
                           triggerFeedback(settings.hapticsEnabled, 'tap');
                           setDeletingCat(cat);
                         }}
-                        className="flex h-9 w-9 items-center justify-center rounded-full bg-red-500/10 text-red-400 transition-colors hover:bg-red-500/20 active:scale-95"
+                        className="soft-press flex h-9 w-9 items-center justify-center rounded-full bg-red-500/10 text-red-400 transition-colors duration-200 hover:bg-red-500/20"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -489,7 +615,7 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
               onClick={() =>
                 downloadFile(exportJSON(), 'metime-backup.json', 'application/json')
               }
-              className="flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#121518] px-3 py-2.5 text-[13px] font-medium text-white hover:bg-white/5"
+              className="soft-press flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#121518] px-3 py-2.5 text-[13px] font-medium text-white transition-colors duration-200 hover:bg-white/5"
             >
               <Download className="h-4 w-4" />
               <span>Export JSON</span>
@@ -497,12 +623,53 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
             <button
               type="button"
               onClick={() => downloadFile(exportCSV(), 'metime-transactions.csv', 'text/csv')}
-              className="flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#121518] px-3 py-2.5 text-[13px] font-medium text-white hover:bg-white/5"
+              className="soft-press flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#121518] px-3 py-2.5 text-[13px] font-medium text-white transition-colors duration-200 hover:bg-white/5"
             >
               <Download className="h-4 w-4" />
               <span>Export CSV</span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                triggerFeedback(settings.hapticsEnabled, 'tap');
+                setImportError(null);
+                fileInputRef.current?.click();
+              }}
+              className="soft-press col-span-2 flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#121518] px-3 py-2.5 text-[13px] font-medium text-white transition-colors duration-200 hover:bg-white/5"
+            >
+              <Upload className="h-4 w-4" />
+              <span>Import (.csv / .json)</span>
+            </button>
           </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,.json"
+            onChange={handleImportFileChange}
+            className="hidden"
+          />
+
+          {importError && (
+            <div
+              role="alert"
+              className="flex items-start justify-between gap-2.5 rounded-2xl border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-[12px] leading-relaxed text-red-200"
+            >
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
+                <span>{importError}</span>
+              </div>
+              <button
+                type="button"
+                aria-label="Dismiss import error"
+                onClick={() => setImportError(null)}
+                className="shrink-0 text-red-300 hover:text-white"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
 
           {!confirmReset ? (
             <button
@@ -555,6 +722,7 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              transition={{ duration: SMALL_DURATION, ease: SOFT_EASE }}
               onClick={() => setCatModalMode(null)}
               className="absolute inset-0 bg-black/70"
             />
@@ -565,21 +733,26 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
                 initial={{ y: '100%' }}
                 animate={{ y: 0 }}
                 exit={{ y: '100%' }}
-                transition={{ type: 'spring', stiffness: 360, damping: 34 }}
+                transition={{ duration: SHEET_DURATION, ease: SOFT_EASE }}
                 drag="y"
                 dragControls={catSheetDragControls}
                 dragListener={false}
                 dragConstraints={{ top: 0 }}
-                dragElastic={{ top: 0.06, bottom: 1 }}
+                dragElastic={{ top: 0.05, bottom: 0.9 }}
                 dragSnapToOrigin
+                dragTransition={{ bounceStiffness: 135, bounceDamping: 24 }}
+                onDragStart={() => {
+                  if (catSheetRef.current) catSheetRef.current.style.willChange = 'transform';
+                }}
                 onDragEnd={(_e, info: PanInfo) => {
+                  if (catSheetRef.current) catSheetRef.current.style.willChange = 'auto';
                   const sheetHeight = catSheetRef.current?.offsetHeight || 420;
                   if (info.offset.y > sheetHeight * 0.3 || info.velocity.y > 420) {
                     setCatModalMode(null);
                   }
                 }}
                 style={{ paddingBottom: 'calc(1.75rem + env(safe-area-inset-bottom))' }}
-                className="pointer-events-auto flex max-h-[88dvh] w-full flex-col rounded-t-[32px] border-t border-white/10 bg-[#141820] px-6 pt-3 text-white shadow-2xl will-change-transform"
+                className="pointer-events-auto flex max-h-[88dvh] w-full flex-col rounded-t-[32px] border-t border-white/10 bg-[#141820] px-6 pt-3 text-white shadow-2xl"
               >
                 <div
                   onPointerDown={(e) => catSheetDragControls.start(e)}
@@ -719,8 +892,9 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
                   <div className="space-y-2.5 pt-2">
                     <motion.button
                       type="submit"
-                      whileTap={{ scale: 0.98 }}
-                      className="min-h-[48px] w-full rounded-full bg-white py-3 text-[15px] font-semibold text-[#0B0F10] shadow-[0_0_18px_rgba(255,255,255,0.2)] transition-colors hover:bg-neutral-100"
+                      whileTap={SOFT_TAP}
+                      transition={SOFT_TAP_TRANSITION}
+                      className="min-h-[48px] w-full rounded-full bg-white py-3 text-[15px] font-semibold text-[#0B0F10] shadow-[0_0_18px_rgba(255,255,255,0.2)] transition-colors duration-200 hover:bg-neutral-100"
                     >
                       {catModalMode === 'add' ? 'Add Category' : 'Save Changes'}
                     </motion.button>
@@ -732,7 +906,7 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
                           triggerFeedback(settings.hapticsEnabled, 'tap');
                           setDeletingCat(editingCat);
                         }}
-                        className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full border border-red-500/25 bg-red-500/10 py-2.5 text-[14px] font-medium text-red-400 transition-colors hover:bg-red-500/15"
+                        className="soft-press flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full border border-red-500/25 bg-red-500/10 py-2.5 text-[14px] font-medium text-red-400 transition-colors duration-200 hover:bg-red-500/15"
                       >
                         <Trash2 className="h-4 w-4" />
                         <span>Delete Category</span>
@@ -754,14 +928,15 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              transition={{ duration: SMALL_DURATION, ease: SOFT_EASE }}
               onClick={() => setDeletingCat(null)}
               className="absolute inset-0 bg-black/75"
             />
             <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: 8 }}
+              initial={{ opacity: 0, scale: 0.96, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.94, y: 8 }}
-              transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+              exit={{ opacity: 0, scale: 0.96, y: 8 }}
+              transition={{ duration: SMALL_DURATION, ease: SOFT_EASE }}
               className="relative z-10 w-full max-w-[340px] rounded-[26px] border border-white/10 bg-[#161922] p-5 text-center text-white shadow-[0_0_28px_rgba(239,68,68,0.22)]"
             >
               <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-red-500/15 text-red-400">
@@ -780,14 +955,14 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
                 <button
                   type="button"
                   onClick={() => setDeletingCat(null)}
-                  className="min-h-[42px] flex-1 rounded-full bg-white/10 text-[13px] font-medium text-white hover:bg-white/15"
+                  className="soft-press min-h-[42px] flex-1 rounded-full bg-white/10 text-[13px] font-medium text-white hover:bg-white/15"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={handleConfirmDeleteCategory}
-                  className="min-h-[42px] flex-1 rounded-full bg-red-500 text-[13px] font-semibold text-white shadow-[0_0_16px_rgba(239,68,68,0.35)] hover:bg-red-600"
+                  className="soft-press min-h-[42px] flex-1 rounded-full bg-red-500 text-[13px] font-semibold text-white shadow-[0_0_16px_rgba(239,68,68,0.35)] hover:bg-red-600"
                 >
                   Delete
                 </button>
@@ -796,6 +971,102 @@ export function SettingsView({ onBack, registerBackHandler }: SettingsViewProps)
           </div>
         )}
       </AnimatePresence>
+
+      {/* Replace vs Merge Import Confirmation Dialog */}
+      <AnimatePresence>
+        {pendingImport && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: SMALL_DURATION, ease: SOFT_EASE }}
+              onClick={() => setPendingImport(null)}
+              className="absolute inset-0 bg-black/75"
+            />
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="import-mode-title"
+              initial={{ opacity: 0, scale: 0.96, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 8 }}
+              transition={{ duration: SMALL_DURATION, ease: SOFT_EASE }}
+              className="relative z-10 w-full max-w-[340px] rounded-[26px] border border-white/10 bg-[#161922] p-5 text-center text-white shadow-[0_0_28px_rgba(99,75,196,0.24)]"
+            >
+              <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white">
+                <Upload className="h-5 w-5" />
+              </div>
+              <h3 id="import-mode-title" className="text-[17px] font-bold">
+                Import {pendingImport.payload.format.toUpperCase()} Data
+              </h3>
+              <p className="mt-1 truncate px-2 text-[12px] font-medium text-[#A5B4FC]">
+                {pendingImport.fileName}
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-[#9CA3AF]">
+                {(() => {
+                  const c = pendingImport.payload.summaryCounts;
+                  const bits: string[] = [];
+                  if (c.transactions > 0) {
+                    bits.push(
+                      `${c.transactions} ${c.transactions === 1 ? 'transaction' : 'transactions'}`
+                    );
+                  }
+                  if (c.jars > 0) {
+                    bits.push(`${c.jars} ${c.jars === 1 ? 'jar' : 'jars'}`);
+                  }
+                  if (c.categories > 0) {
+                    bits.push(`${c.categories} ${c.categories === 1 ? 'category' : 'categories'}`);
+                  }
+                  const summaryText = bits.length > 0 ? bits.join(', ') : 'backup settings';
+                  return `Ready to import ${summaryText}. Choose whether to merge with your existing data or replace it.`;
+                })()}
+              </p>
+
+              <div className="mt-5 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => applyImport(pendingImport.payload, 'merge')}
+                  className="soft-press min-h-[44px] w-full rounded-full bg-white text-[13px] font-semibold text-[#0B0F10] shadow-[0_0_16px_rgba(255,255,255,0.18)] hover:bg-neutral-100"
+                >
+                  Merge with Existing
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyImport(pendingImport.payload, 'replace')}
+                  className="soft-press min-h-[44px] w-full rounded-full border border-red-500/30 bg-red-500/15 text-[13px] font-semibold text-red-300 hover:bg-red-500/25"
+                >
+                  Replace Existing Data
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPendingImport(null)}
+                  className="soft-press min-h-[40px] w-full rounded-full bg-white/[0.06] text-[13px] font-medium text-[#9CA3AF] hover:text-white"
+                >
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating Feedback Toast */}
+      <AnimatePresence>
+        {savedToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 12, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.97 }}
+            transition={{ duration: SMALL_DURATION, ease: SOFT_EASE }}
+            style={{ bottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
+            className="pointer-events-none absolute inset-x-6 z-40 mx-auto flex max-w-[340px] items-center justify-center gap-2 rounded-full border border-[#1ED82B]/35 bg-[#121B17]/95 px-4 py-2.5 text-[13px] font-medium text-[#6EEFA2] shadow-[0_0_18px_rgba(30,216,43,0.22)]"
+          >
+            <Check className="h-4 w-4 shrink-0" />
+            <span className="truncate">{savedToast}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
-}
+});

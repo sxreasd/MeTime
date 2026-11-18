@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { animate, useMotionValue } from 'motion/react';
 import { formatCurrency } from '../utils/format';
+import { DECEL_EASE, SOFT_SPRING } from '../utils/motion';
 
 interface AnimatedNumberProps {
   value: number;
@@ -13,7 +14,7 @@ interface AnimatedNumberProps {
   countDuration?: number;
 }
 
-export function AnimatedNumber({
+export const AnimatedNumber = memo(function AnimatedNumber({
   value,
   currency = '₱',
   className = '',
@@ -26,13 +27,26 @@ export function AnimatedNumber({
   const initialVal = startFromZero || holdAtZero ? 0 : value;
   const motionVal = useMotionValue(initialVal);
   const [displayValue, setDisplayValue] = useState(initialVal);
+  const lastCommittedRef = useRef(initialVal);
   const mountedRef = useRef(false);
   const prevHoldRef = useRef(holdAtZero);
 
   useEffect(() => {
+    const commit = (next: number) => {
+      const rounded = Math.round(next * 100) / 100;
+      if (rounded !== lastCommittedRef.current) {
+        lastCommittedRef.current = rounded;
+        setDisplayValue(rounded);
+      }
+    };
+
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
     if (holdAtZero) {
       motionVal.set(0);
-      setDisplayValue(0);
+      commit(0);
       prevHoldRef.current = true;
       return;
     }
@@ -40,13 +54,20 @@ export function AnimatedNumber({
     const releasedFromHold = prevHoldRef.current && !holdAtZero;
     prevHoldRef.current = false;
 
+    if (prefersReducedMotion) {
+      mountedRef.current = true;
+      motionVal.set(value);
+      commit(value);
+      return;
+    }
+
     if (!mountedRef.current) {
       mountedRef.current = true;
       if ((startFromZero || releasedFromHold) && value !== 0) {
         motionVal.set(0);
       } else {
         motionVal.set(value);
-        setDisplayValue(value);
+        commit(value);
         return;
       }
     }
@@ -58,25 +79,14 @@ export function AnimatedNumber({
         ? {
             delay: countDelay,
             duration: countDuration,
-            ease: [0.22, 1, 0.36, 1],
-            onUpdate: (latest) => {
-              setDisplayValue(Math.round(latest * 100) / 100);
-            },
-            onComplete: () => {
-              setDisplayValue(value);
-            },
+            ease: DECEL_EASE,
+            onUpdate: commit,
+            onComplete: () => commit(value),
           }
         : {
-            type: 'spring',
-            stiffness: 240,
-            damping: 26,
-            mass: 0.85,
-            onUpdate: (latest) => {
-              setDisplayValue(Math.round(latest * 100) / 100);
-            },
-            onComplete: () => {
-              setDisplayValue(value);
-            },
+            ...SOFT_SPRING,
+            onUpdate: commit,
+            onComplete: () => commit(value),
           }
     );
     return () => controls.stop();
@@ -87,4 +97,4 @@ export function AnimatedNumber({
       {formatCurrency(displayValue, currency, { forceDecimals })}
     </span>
   );
-}
+});

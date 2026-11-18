@@ -1,7 +1,9 @@
+import { memo } from 'react';
 import { motion, Variants } from 'motion/react';
 import { CreditCard, Home as HomeIcon, LayoutGrid } from 'lucide-react';
 import { AppScreen } from '../types/money';
 import { triggerFeedback } from '../utils/format';
+import { SOFT_EASE, SOFT_PILL_SPRING, SMALL_DURATION } from '../utils/motion';
 import { useMoney } from '../context/MoneyContext';
 import { INTRO_TIMING, IntroStage } from './IntroSequence';
 
@@ -14,8 +16,8 @@ interface BottomNavProps {
 const navVariants: Variants = {
   hidden: {
     opacity: 0,
-    y: 64,
-    scale: 0.94,
+    y: 48,
+    scale: 0.96,
   },
   reveal: {
     opacity: 1,
@@ -31,31 +33,31 @@ const navVariants: Variants = {
     y: 0,
     scale: 1,
     transition: {
-      duration: INTRO_TIMING.skipFadeDuration,
-      ease: [0.22, 1, 0.36, 1],
+      duration: SMALL_DURATION,
+      ease: SOFT_EASE,
     },
   },
 };
 
-export function BottomNav({
+const NAV_ITEMS: { id: AppScreen; label: string; icon: typeof HomeIcon }[] = [
+  { id: 'todo', label: 'To-Do List', icon: LayoutGrid },
+  { id: 'home', label: 'Home', icon: HomeIcon },
+  { id: 'card_soon', label: 'Coming soon', icon: CreditCard },
+];
+
+export const BottomNav = memo(function BottomNav({
   activeScreen,
   onNavigate,
   introStage = 'settled',
 }: BottomNavProps) {
   const { settings } = useMoney();
 
-  const items: { id: AppScreen; label: string; icon: typeof HomeIcon }[] = [
-    { id: 'todo', label: 'To-Do List', icon: LayoutGrid },
-    { id: 'home', label: 'Home', icon: HomeIcon },
-    { id: 'card_soon', label: 'Coming soon', icon: CreditCard },
-  ];
-
   return (
     <motion.div
       variants={navVariants}
       initial={introStage === 'hidden' ? 'hidden' : { opacity: 0, y: 12, scale: 1 }}
       animate={introStage}
-      exit={{ opacity: 0, y: 14 }}
+      exit={{ opacity: 0, y: 14, transition: { duration: SMALL_DURATION, ease: SOFT_EASE } }}
       style={{ bottom: 'calc(1.15rem + env(safe-area-inset-bottom))' }}
       className="pointer-events-none absolute inset-x-0 z-30 flex justify-center px-6"
     >
@@ -63,7 +65,7 @@ export function BottomNav({
         aria-label="Primary navigation"
         className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-white/[0.07] bg-[#181B20] p-1.5 shadow-lg"
       >
-        {items.map((item) => {
+        {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const isActive = activeScreen === item.id;
           return (
@@ -77,22 +79,17 @@ export function BottomNav({
                 triggerFeedback(settings.hapticsEnabled, 'tap');
                 onNavigate(item.id);
               }}
-              className="relative flex min-h-[44px] min-w-[66px] items-center justify-center rounded-full px-5 py-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+              className="soft-press relative flex min-h-[44px] min-w-[66px] items-center justify-center rounded-full px-5 py-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
             >
               {isActive && (
                 <motion.span
                   layoutId="bottom-nav-active-pill"
-                  transition={{
-                    type: 'spring',
-                    stiffness: 520,
-                    damping: 40,
-                    mass: 0.7,
-                  }}
+                  transition={SOFT_PILL_SPRING}
                   className="absolute inset-0 rounded-full bg-white shadow-sm"
                 />
               )}
               <Icon
-                className={`relative z-10 h-[20px] w-[20px] transition-colors duration-150 ${
+                className={`relative z-10 h-[20px] w-[20px] transition-colors duration-250 ease-[cubic-bezier(0.4,0,0.2,1)] ${
                   isActive ? 'text-[#111827] stroke-[2.2]' : 'text-[#8E959B] hover:text-white'
                 }`}
               />
@@ -102,4 +99,4 @@ export function BottomNav({
       </nav>
     </motion.div>
   );
-}
+});

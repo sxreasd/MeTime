@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   animate,
   AnimatePresence,
@@ -19,6 +19,12 @@ import {
   startOfWeekMonday,
   triggerFeedback,
 } from '../utils/format';
+import {
+  GENTLE_DRAG_SPRING,
+  SMALL_DURATION,
+  SOFT_EASE,
+  SOFT_TAP_TRANSITION,
+} from '../utils/motion';
 import { AnimatedNumber } from './AnimatedNumber';
 import { INTRO_TIMING, IntroStage } from './IntroSequence';
 import { JarMiniIcon } from './JarGraphic';
@@ -171,41 +177,37 @@ const GENERIC_GREETINGS = [
 ];
 
 function CardBlurBackdrop({ variant = 'card' }: { variant?: 'card' | 'alt' | 'pill' }) {
+  const backgroundImage =
+    variant === 'pill'
+      ? [
+          'radial-gradient(88% 125% at 14% 92%, rgba(147, 51, 234, 0.15) 0%, rgba(107, 33, 168, 0.07) 48%, transparent 80%)',
+          'radial-gradient(80% 100% at 88% 18%, rgba(49, 46, 129, 0.11) 0%, transparent 74%)',
+        ].join(', ')
+      : variant === 'alt'
+        ? [
+            'radial-gradient(86% 92% at 20% 18%, rgba(79, 70, 229, 0.13) 0%, rgba(55, 48, 163, 0.05) 56%, transparent 84%)',
+            'radial-gradient(86% 92% at 84% 86%, rgba(147, 51, 234, 0.14) 0%, rgba(107, 33, 168, 0.05) 56%, transparent 84%)',
+          ].join(', ')
+        : [
+            'radial-gradient(86% 92% at 86% 16%, rgba(79, 70, 229, 0.14) 0%, rgba(55, 48, 163, 0.05) 56%, transparent 84%)',
+            'radial-gradient(86% 92% at 16% 88%, rgba(147, 51, 234, 0.14) 0%, rgba(107, 33, 168, 0.05) 56%, transparent 84%)',
+          ].join(', ');
+
   return (
-    <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-      <div className="absolute inset-0 bg-[#0A0C16]/82" />
-      <div
-        className="absolute rounded-full blur-[46px]"
-        style={{
-          width: variant === 'pill' ? '92%' : '84%',
-          height: variant === 'pill' ? '145%' : '90%',
-          top: variant === 'alt' ? '-22%' : '-28%',
-          right: variant === 'alt' ? '12%' : '-14%',
-          background:
-            variant === 'alt'
-              ? 'radial-gradient(circle, rgba(55, 48, 163, 0.72) 0%, rgba(30, 58, 138, 0.36) 62%, transparent 100%)'
-              : 'radial-gradient(circle, rgba(67, 56, 202, 0.74) 0%, rgba(49, 46, 129, 0.38) 62%, transparent 100%)',
-        }}
-      />
-      <div
-        className="absolute rounded-full blur-[48px]"
-        style={{
-          width: variant === 'pill' ? '80%' : '78%',
-          height: variant === 'pill' ? '135%' : '84%',
-          bottom: variant === 'alt' ? '-24%' : '-30%',
-          left: variant === 'alt' ? '-12%' : '-18%',
-          background:
-            'radial-gradient(circle, rgba(126, 34, 206, 0.56) 0%, rgba(88, 28, 135, 0.28) 62%, transparent 100%)',
-        }}
-      />
-      <div className="absolute inset-0 bg-[#070912]/36" />
-    </div>
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0"
+      style={{
+        backgroundColor: '#0A0D18',
+        backgroundImage,
+      }}
+    />
   );
 }
 
 type DateRangeFilter = 'all' | 'today' | 'week' | 'month' | 'custom';
 
-export function Home({
+export const Home = memo(function Home({
   onNavigate,
   onOpenEntry,
   introStage = 'settled',
@@ -254,8 +256,8 @@ export function Home({
   const [undoBackup, setUndoBackup] = useState<DeletedTxBackup | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // List windowing when > 50 transactions to keep APK 60fps
-  const PAGE_SIZE = 50;
+  // List windowing when > 25 transactions to keep APK 60fps
+  const PAGE_SIZE = 25;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
@@ -265,6 +267,7 @@ export function Home({
   const expandedHeaderRef = useRef<HTMLDivElement>(null);
   const listScrollRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const [collapsedY, setCollapsedY] = useState(348);
   const [expandedY, setExpandedY] = useState(148);
@@ -298,13 +301,17 @@ export function Home({
   // Keep panelY synced to collapsedY / expandedY when measurements update or state toggles
   useEffect(() => {
     const target = isExpanded ? expandedY : collapsedY;
+    if (panelRef.current) panelRef.current.style.willChange = 'transform';
     const controls = animate(panelY, target, {
-      type: 'spring',
-      stiffness: 360,
-      damping: 34,
-      mass: 0.85,
+      ...GENTLE_DRAG_SPRING,
+      onComplete: () => {
+        if (panelRef.current) panelRef.current.style.willChange = 'auto';
+      },
     });
-    return () => controls.stop();
+    return () => {
+      controls.stop();
+      if (panelRef.current) panelRef.current.style.willChange = 'auto';
+    };
   }, [isExpanded, collapsedY, expandedY, panelY]);
 
   // Derived 60fps progress & transforms (0 = collapsed, 1 = expanded)
@@ -317,7 +324,6 @@ export function Home({
   // Expanded header stays strictly hidden (opacity 0) until panel nears top (>55% progress)
   const expHeaderOpacity = useTransform(progress, [0.55, 0.96], [0, 1]);
   const expHeaderY = useTransform(progress, [0.45, 1], [20, 0]);
-  const panelTopRadius = useTransform(progress, [0, 1], [32, 20]);
 
   // Register Back button handler:
   // 1. Close filter popover if open
@@ -492,11 +498,12 @@ export function Home({
       triggerFeedback(settings.hapticsEnabled, 'tap');
       setIsExpanded(nextExpanded);
     } else {
+      if (panelRef.current) panelRef.current.style.willChange = 'transform';
       animate(panelY, isExpanded ? expandedY : collapsedY, {
-        type: 'spring',
-        stiffness: 360,
-        damping: 34,
-        mass: 0.85,
+        ...GENTLE_DRAG_SPRING,
+        onComplete: () => {
+          if (panelRef.current) panelRef.current.style.willChange = 'auto';
+        },
       });
     }
   };
@@ -578,14 +585,14 @@ export function Home({
           </motion.h1>
           <motion.button
             variants={gearVariants}
-            whileTap={{ scale: 0.94 }}
+            whileTap={{ scale: 0.98, transition: SOFT_TAP_TRANSITION }}
             type="button"
             aria-label="Settings"
             onClick={() => {
               triggerFeedback(settings.hapticsEnabled, 'tap');
               onNavigate('settings');
             }}
-            className="absolute right-0 flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[#1C2124]/92 text-[#9CA3AF] transition-colors duration-100 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+            className="absolute right-0 flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[#1C2124]/92 text-[#9CA3AF] transition-colors duration-200 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
           >
             <Settings className="h-[19px] w-[19px]" />
           </motion.button>
@@ -622,21 +629,21 @@ export function Home({
             <motion.button
               variants={spendPillVariants}
               type="button"
-              whileTap={{ scale: 0.94 }}
+              whileTap={{ scale: 0.98, transition: SOFT_TAP_TRANSITION }}
               onClick={() => {
                 triggerFeedback(settings.hapticsEnabled, 'tap');
                 onOpenEntry('spend');
               }}
               style={{
-                background: 'linear-gradient(180deg, #FFFFFF 0%, #F7F8FA 56%, #E8ECF2 100%)',
+                background: 'linear-gradient(180deg, #FFFFFF 0%, #F9FAFB 58%, #ECEFF4 100%)',
                 boxShadow:
-                  'inset 0 1.5px 1px rgba(255, 255, 255, 1), inset 0 -1.5px 2.5px rgba(15, 23, 42, 0.14), 0 0 14px rgba(255, 255, 255, 0.18), 0 5px 14px rgba(0, 0, 0, 0.34)',
+                  'inset 0 1px 0.5px rgba(255, 255, 255, 1), inset 0 -1px 2px rgba(15, 23, 42, 0.08), 0 0 18px rgba(255, 255, 255, 0.24)',
               }}
-              className="relative min-h-[44px] overflow-hidden rounded-full px-6 py-2.5 text-[14px] font-semibold text-[#0B0F10] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+              className="relative min-h-[44px] overflow-hidden rounded-full px-6 py-2.5 text-[14px] font-bold text-[#0B0F10] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
             >
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-x-1 top-0.5 h-[48%] rounded-full bg-gradient-to-b from-white/95 via-white/35 to-transparent"
+                className="pointer-events-none absolute inset-x-1.5 top-0.5 h-[44%] rounded-full bg-gradient-to-b from-white/90 via-white/25 to-transparent"
               />
               <span className="relative z-10">Spend</span>
             </motion.button>
@@ -644,16 +651,16 @@ export function Home({
             <motion.button
               variants={addPillVariants}
               type="button"
-              whileTap={{ scale: 0.94 }}
+              whileTap={{ scale: 0.98, transition: SOFT_TAP_TRANSITION }}
               onClick={() => {
                 triggerFeedback(settings.hapticsEnabled, 'tap');
                 onOpenEntry('add');
               }}
               style={{
                 boxShadow:
-                  '0 0 18px rgba(108, 72, 198, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.12)',
+                  '0 0 16px rgba(139, 92, 246, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
               }}
-              className="relative min-h-[44px] overflow-hidden rounded-full border border-white/[0.14] px-7 py-2.5 text-[14px] font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+              className="relative min-h-[44px] overflow-hidden rounded-full border border-white/[0.12] px-7 py-2.5 text-[14px] font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
             >
               <CardBlurBackdrop variant="pill" />
               <span className="relative z-10">Add</span>
@@ -666,16 +673,16 @@ export function Home({
           <motion.button
             variants={leftCardVariants}
             type="button"
-            whileTap={{ scale: 0.96 }}
+            whileTap={{ scale: 0.98, transition: SOFT_TAP_TRANSITION }}
             onClick={() => {
               triggerFeedback(settings.hapticsEnabled, 'tap');
               onNavigate('analytics');
             }}
             style={{
               boxShadow:
-                '0 0 20px rgba(99, 75, 196, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.10)',
+                '0 0 18px rgba(109, 40, 217, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
             }}
-            className="relative flex flex-col justify-between overflow-hidden rounded-[24px] border border-white/[0.12] p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+            className="relative flex flex-col justify-between overflow-hidden rounded-[24px] border border-white/[0.11] p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
           >
             <CardBlurBackdrop variant="card" />
             <span className="relative z-10 text-[12px] font-medium text-[#CBD2DC]">
@@ -694,16 +701,16 @@ export function Home({
           <motion.button
             variants={rightCardVariants}
             type="button"
-            whileTap={{ scale: 0.96 }}
+            whileTap={{ scale: 0.98, transition: SOFT_TAP_TRANSITION }}
             onClick={() => {
               triggerFeedback(settings.hapticsEnabled, 'tap');
               onNavigate('piggy');
             }}
             style={{
               boxShadow:
-                '0 0 20px rgba(99, 75, 196, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.10)',
+                '0 0 18px rgba(109, 40, 217, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
             }}
-            className="relative flex items-center justify-between gap-2 overflow-hidden rounded-[24px] border border-white/[0.12] p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+            className="relative flex items-center justify-between gap-2 overflow-hidden rounded-[24px] border border-white/[0.11] p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
           >
             <CardBlurBackdrop variant="alt" />
             <div className="relative z-10 min-w-0">
@@ -756,7 +763,7 @@ export function Home({
               triggerFeedback(settings.hapticsEnabled, 'tap');
               setShowFilter((v) => !v);
             }}
-            className={`relative flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] transition-colors active:scale-95 ${
+            className={`soft-press relative flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] transition-colors duration-200 ${
               showFilter || hasActiveFilters
                 ? 'bg-white text-[#0B0F10]'
                 : 'bg-[#1C2124]/85 text-[#9CA3AF] hover:text-white'
@@ -806,23 +813,26 @@ export function Home({
         className="pointer-events-none absolute inset-0 z-20"
       >
         <motion.div
+          ref={panelRef}
           drag="y"
           dragControls={panelDragControls}
           dragListener={false}
           dragConstraints={{ top: safeExpandedY, bottom: collapsedY }}
           dragElastic={0.14}
           dragMomentum={false}
+          dragTransition={{ bounceStiffness: 135, bounceDamping: 24 }}
           style={{
             y: panelY,
-            borderTopLeftRadius: panelTopRadius,
-            borderTopRightRadius: panelTopRadius,
             height: Math.max(260, containerHeight - safeExpandedY),
+          }}
+          onDragStart={() => {
+            if (panelRef.current) panelRef.current.style.willChange = 'transform';
           }}
           onDragEnd={handlePanelDragEnd}
           onClick={() => {
             if (openSwipeTxId) setOpenSwipeTxId(null);
           }}
-          className="pointer-events-auto relative flex w-full flex-col overflow-hidden bg-white text-[#111827] shadow-xl will-change-transform"
+          className="pointer-events-auto relative flex w-full flex-col overflow-hidden rounded-t-[28px] bg-white text-[#111827] shadow-xl"
         >
           {/* Drag Handle Only (clean collapsed state: handle + list only) */}
           <div
@@ -909,35 +919,41 @@ export function Home({
             ) : isExpanded ? (
               /* Expanded View: Date-Grouped Rounded Cards */
               <div className="space-y-5 pt-1">
-                {groupedTransactions.map((group) => (
-                  <section key={group.label}>
-                    <h3 className="mb-1.5 px-6 text-[12px] font-semibold tracking-wide text-gray-400 uppercase">
-                      {group.label}
-                    </h3>
-                    <div className="space-y-0.5">
-                      <AnimatePresence initial={false}>
-                        {group.items.map((tx) => (
-                          <SwipeableTransactionRow
-                            key={tx.id}
-                            tx={tx}
-                            currency={settings.currency}
-                            hapticsEnabled={settings.hapticsEnabled}
-                            isRevealed={openSwipeTxId === tx.id}
-                            onRevealChange={setOpenSwipeTxId}
-                            onDelete={handleDeleteTx}
-                            dotColor={getDotColor(tx)}
-                          />
-                        ))}
-                      </AnimatePresence>
-                    </div>
-                  </section>
-                ))}
+                {groupedTransactions.map((group, gIdx) => {
+                  const startIndex = groupedTransactions
+                    .slice(0, gIdx)
+                    .reduce((acc, g) => acc + g.items.length, 0);
+                  return (
+                    <section key={group.label}>
+                      <h3 className="mb-1.5 px-6 text-[12px] font-semibold tracking-wide text-gray-400 uppercase">
+                        {group.label}
+                      </h3>
+                      <div className="space-y-0.5">
+                        <AnimatePresence initial={false}>
+                          {group.items.map((tx, idx) => (
+                            <SwipeableTransactionRow
+                              key={tx.id}
+                              tx={tx}
+                              currency={settings.currency}
+                              hapticsEnabled={settings.hapticsEnabled}
+                              isRevealed={openSwipeTxId === tx.id}
+                              onRevealChange={setOpenSwipeTxId}
+                              onDelete={handleDeleteTx}
+                              dotColor={getDotColor(tx)}
+                              index={startIndex + idx}
+                            />
+                          ))}
+                        </AnimatePresence>
+                      </div>
+                    </section>
+                  );
+                })}
               </div>
             ) : (
               /* Collapsed View: Clean Rounded Transaction Cards */
               <div className="space-y-0.5 pt-0.5">
                 <AnimatePresence initial={false}>
-                  {visibleTransactions.map((tx) => (
+                  {visibleTransactions.map((tx, idx) => (
                     <SwipeableTransactionRow
                       key={tx.id}
                       tx={tx}
@@ -947,6 +963,7 @@ export function Home({
                       onRevealChange={setOpenSwipeTxId}
                       onDelete={handleDeleteTx}
                       dotColor={getDotColor(tx)}
+                      index={idx}
                     />
                   ))}
                 </AnimatePresence>
@@ -960,7 +977,7 @@ export function Home({
                   onClick={() =>
                     setVisibleCount((c) => Math.min(c + PAGE_SIZE, filteredTransactions.length))
                   }
-                  className="rounded-full bg-gray-100 px-4 py-1.5 text-[12px] font-medium text-gray-600 active:scale-95"
+                  className="soft-press rounded-full bg-gray-100 px-4 py-1.5 text-[12px] font-medium text-gray-600"
                 >
                   Load more ({filteredTransactions.length - visibleCount} remaining)
                 </button>
@@ -982,16 +999,16 @@ export function Home({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.16 }}
+              transition={{ duration: SMALL_DURATION, ease: SOFT_EASE }}
               onClick={() => setShowFilter(false)}
               className="absolute inset-0 bg-black/65"
             />
 
             <motion.div
-              initial={{ opacity: 0, y: -10, scale: 0.96 }}
+              initial={{ opacity: 0, y: -8, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -10, scale: 0.96 }}
-              transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+              exit={{ opacity: 0, y: -8, scale: 0.97 }}
+              transition={{ duration: SMALL_DURATION, ease: SOFT_EASE }}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
               className="relative z-10 max-h-[65dvh] space-y-3.5 overflow-y-auto rounded-[24px] border border-white/[0.1] bg-[#16191F] p-4 text-white shadow-2xl"
@@ -1146,10 +1163,10 @@ export function Home({
       <AnimatePresence>
         {undoBackup && (
           <motion.div
-            initial={{ opacity: 0, y: 18, scale: 0.96 }}
+            initial={{ opacity: 0, y: 14, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 14, scale: 0.96 }}
-            transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+            exit={{ opacity: 0, y: 12, scale: 0.97 }}
+            transition={{ duration: SMALL_DURATION, ease: SOFT_EASE }}
             style={{ bottom: 'calc(5.6rem + env(safe-area-inset-bottom))' }}
             className="pointer-events-auto absolute inset-x-6 z-40 mx-auto flex max-w-[340px] items-center justify-between gap-4 rounded-full border border-white/[0.1] bg-[#16191F] px-5 py-3 text-[13px] text-white shadow-lg"
           >
@@ -1157,7 +1174,7 @@ export function Home({
             <button
               type="button"
               onClick={handleUndoDelete}
-              className="font-semibold text-[#4ADE80] transition-opacity hover:opacity-85 active:scale-95"
+              className="soft-press font-semibold text-[#4ADE80] transition-opacity hover:opacity-85"
             >
               Undo
             </button>
@@ -1166,4 +1183,4 @@ export function Home({
       </AnimatePresence>
     </motion.div>
   );
-}
+});

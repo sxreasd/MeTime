@@ -1,11 +1,13 @@
+import { memo } from 'react';
 import { motion } from 'motion/react';
 import { CreditCard, ListChecks } from 'lucide-react';
+import { SOFT_EASE } from '../utils/motion';
 
 interface ComingSoonViewProps {
   variant: 'todo' | 'card';
 }
 
-export function ComingSoonView({ variant }: ComingSoonViewProps) {
+export const ComingSoonView = memo(function ComingSoonView({ variant }: ComingSoonViewProps) {
   const isTodo = variant === 'todo';
   const Icon = isTodo ? ListChecks : CreditCard;
   const pageTitle = isTodo ? 'To-Do List' : 'Coming soon';
@@ -31,9 +33,9 @@ export function ComingSoonView({ variant }: ComingSoonViewProps) {
         className="relative z-10 flex flex-1 flex-col items-center justify-center px-8 text-center"
       >
         <motion.div
-          initial={{ opacity: 0, scale: 0.96 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+          initial={{ opacity: 0, y: 12, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.48, ease: SOFT_EASE }}
           className="flex w-full flex-col items-center rounded-[28px] border border-white/[0.08] bg-[#1A1D21]/92 px-6 py-10 shadow-[0_0_20px_rgba(99,75,196,0.14)]"
         >
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-[#6EEFA2]/25 bg-[#1C2124] text-[#6EEFA2] shadow-[0_0_18px_rgba(110,239,162,0.28)]">
@@ -47,4 +49,4 @@ export function ComingSoonView({ variant }: ComingSoonViewProps) {
       </div>
     </div>
   );
-}
+});

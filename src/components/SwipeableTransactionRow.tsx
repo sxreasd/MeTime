@@ -2,6 +2,7 @@ import { memo, useEffect, useRef } from 'react';
 import { animate, motion, PanInfo, useMotionValue, useTransform } from 'motion/react';
 import { Transaction } from '../types/money';
 import { formatTimeShort, formatTxRowAmount, triggerFeedback } from '../utils/format';
+import { GENTLE_DRAG_SPRING, SOFT_EASE } from '../utils/motion';
 
 interface SwipeableTransactionRowProps {
   tx: Transaction;
@@ -11,6 +12,7 @@ interface SwipeableTransactionRowProps {
   onRevealChange: (id: string | null) => void;
   onDelete: (id: string) => void;
   dotColor?: string;
+  index?: number;
 }
 
 const DELETE_BTN_WIDTH = 90;
@@ -23,6 +25,7 @@ export const SwipeableTransactionRow = memo(function SwipeableTransactionRow({
   onRevealChange,
   onDelete,
   dotColor = '#10B981',
+  index = 99,
 }: SwipeableTransactionRowProps) {
   // Pure transform/opacity motion values — zero width/height layout reflow per frame
   const revealPx = useMotionValue(0);
@@ -34,24 +37,37 @@ export const SwipeableTransactionRow = memo(function SwipeableTransactionRow({
   const isDraggingRef = useRef(false);
   const panStartRevealRef = useRef(0);
   const closedOthersRef = useRef(false);
+  const amountRef = useRef<HTMLDivElement>(null);
+  const deleteBtnRef = useRef<HTMLButtonElement>(null);
+
+  const setActiveWillChange = (active: boolean) => {
+    const val = active ? 'transform' : 'auto';
+    if (amountRef.current) amountRef.current.style.willChange = val;
+    if (deleteBtnRef.current) deleteBtnRef.current.style.willChange = val;
+  };
 
   // Sync external reveal/close state (e.g. another row opened, scrolled, or tapped away)
   useEffect(() => {
     if (isDraggingRef.current) return;
     const target = isRevealed ? DELETE_BTN_WIDTH : 0;
+    if (Math.abs(revealPx.get() - target) < 0.5) return;
+
+    setActiveWillChange(true);
     const controls = animate(revealPx, target, {
-      type: 'spring',
-      stiffness: 440,
-      damping: 36,
-      mass: 0.75,
+      ...GENTLE_DRAG_SPRING,
+      onComplete: () => setActiveWillChange(false),
     });
-    return () => controls.stop();
+    return () => {
+      controls.stop();
+      setActiveWillChange(false);
+    };
   }, [isRevealed, revealPx]);
 
   const handlePanStart = () => {
     isDraggingRef.current = true;
     panStartRevealRef.current = revealPx.get();
     closedOthersRef.current = false;
+    setActiveWillChange(true);
   };
 
   const handlePan = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
@@ -78,10 +94,8 @@ export const SwipeableTransactionRow = memo(function SwipeableTransactionRow({
     const target = shouldOpen ? DELETE_BTN_WIDTH : 0;
 
     animate(revealPx, target, {
-      type: 'spring',
-      stiffness: 440,
-      damping: 36,
-      mass: 0.75,
+      ...GENTLE_DRAG_SPRING,
+      onComplete: () => setActiveWillChange(false),
     });
 
     onRevealChange(shouldOpen ? tx.id : null);
@@ -98,13 +112,18 @@ export const SwipeableTransactionRow = memo(function SwipeableTransactionRow({
   metaParts.push(formatTimeShort(tx.createdAt));
   const metaText = metaParts.join(' · ');
 
+  const shouldStagger = index < 8;
+
   return (
     <motion.div
-      layout="position"
-      initial={{ opacity: 0, y: -6 }}
+      initial={shouldStagger ? { opacity: 0, y: 8 } : false}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.94, transition: { duration: 0.16, ease: 'easeOut' } }}
-      transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+      exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.24, ease: SOFT_EASE } }}
+      transition={{
+        duration: 0.34,
+        delay: shouldStagger ? index * 0.065 : 0,
+        ease: SOFT_EASE,
+      }}
       className="px-4 py-1"
     >
       <motion.div
@@ -141,6 +160,7 @@ export const SwipeableTransactionRow = memo(function SwipeableTransactionRow({
 
         {/* Amount translates smoothly via GPU transform to stay clear of the sliding Delete button */}
         <motion.div
+          ref={amountRef}
           style={{ x: amountX }}
           className="relative z-10 shrink-0 rounded-l-lg bg-white pl-2"
         >
@@ -160,6 +180,7 @@ export const SwipeableTransactionRow = memo(function SwipeableTransactionRow({
 
         {/* Delete Button slides in from right via pure transform: translateX */}
         <motion.button
+          ref={deleteBtnRef}
           type="button"
           style={{ x: deleteBtnX, opacity: deleteOpacity }}
           onPointerDown={(e) => e.stopPropagation()}
@@ -168,7 +189,7 @@ export const SwipeableTransactionRow = memo(function SwipeableTransactionRow({
             triggerFeedback(hapticsEnabled, 'confirm');
             onDelete(tx.id);
           }}
-          className="absolute inset-y-0 right-0 z-20 flex w-[90px] items-center justify-center bg-[#EF4444] text-[13px] font-semibold tracking-tight whitespace-nowrap text-white active:bg-[#DC2626]"
+          className="soft-press absolute inset-y-0 right-0 z-20 flex w-[90px] items-center justify-center bg-[#EF4444] text-[13px] font-semibold tracking-tight whitespace-nowrap text-white active:bg-[#DC2626]"
         >
           Delete
         </motion.button>
