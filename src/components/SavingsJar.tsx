@@ -6,7 +6,6 @@ import {
   ChevronLeft,
   Delete,
   MoreHorizontal,
-  PiggyBank as PiggyIcon,
   Plus,
   Settings,
   Trash2,
@@ -15,8 +14,9 @@ import { useMoney } from '../context/MoneyContext';
 import { JAR_COLOR_STYLES, Jar, JarColorKey } from '../types/money';
 import { formatCurrency, triggerFeedback } from '../utils/format';
 import { AnimatedNumber } from './AnimatedNumber';
+import { JarCardWaveBackdrop, JarMiniIcon } from './JarGraphic';
 
-interface PiggyBankProps {
+interface SavingsJarProps {
   onBack: () => void;
   registerBackHandler?: (fn: (() => boolean) | null) => void;
 }
@@ -55,17 +55,8 @@ const JarCard = memo(function JarCard({
       }}
       className="relative flex min-h-[146px] flex-col justify-between overflow-hidden rounded-[24px] p-5"
     >
-      {/* Signature Overlapping Translucent Circles */}
-      <div
-        aria-hidden="true"
-        style={{ backgroundColor: style.circleA }}
-        className="pointer-events-none absolute -right-12 -bottom-16 h-52 w-52 rounded-full"
-      />
-      <div
-        aria-hidden="true"
-        style={{ backgroundColor: style.circleB }}
-        className="pointer-events-none absolute -right-16 top-6 h-44 w-44 rounded-full"
-      />
+      {/* Soft Wave Layers + Oversized Clipped Random Circles */}
+      <JarCardWaveBackdrop color={jar.color} circles={jar.circles} />
 
       {/* Top Row: Name + Balance */}
       <div className="relative z-10 flex items-start justify-between gap-3">
@@ -77,7 +68,10 @@ const JarCard = memo(function JarCard({
             {jar.name}
           </h3>
           {jar.goal && jar.goal > 0 && (
-            <p style={{ color: style.subtext }} className="mt-1 text-[12px] font-medium tabular-nums">
+            <p
+              style={{ color: style.subtext }}
+              className="mt-1 text-[12px] font-medium tabular-nums"
+            >
               Goal {formatCurrency(jar.goal, currency)} ({progress}%)
             </p>
           )}
@@ -94,12 +88,12 @@ const JarCard = memo(function JarCard({
 
       {/* Optional Goal Bar (pure scaleX transform) */}
       {progress !== null && (
-        <div className="relative z-10 mt-2 mb-1 h-1.5 w-full overflow-hidden rounded-full bg-black/10">
+        <div className="relative z-10 mt-2 mb-1 h-1.5 w-full overflow-hidden rounded-full bg-black/15">
           <motion.div
             initial={{ scaleX: 0 }}
             animate={{ scaleX: Math.max(0, Math.min(1, progress / 100)) }}
             transition={{ type: 'spring', stiffness: 280, damping: 28 }}
-            className="h-full w-full origin-left rounded-full bg-white/80"
+            className="h-full w-full origin-left rounded-full bg-white/85"
           />
         </div>
       )}
@@ -132,8 +126,8 @@ const JarCard = memo(function JarCard({
   );
 });
 
-export function PiggyBank({ onBack, registerBackHandler }: PiggyBankProps) {
-  const { jars, balance, totalPiggyBank, settings, createJar, updateJar, deleteJar, transferJarMoney } =
+export function SavingsJar({ onBack, registerBackHandler }: SavingsJarProps) {
+  const { jars, balance, totalSavingsJar, settings, createJar, updateJar, deleteJar, transferJarMoney } =
     useMoney();
 
   const [sortBy, setSortBy] = useState<'created' | 'balance' | 'name'>('created');
@@ -289,103 +283,114 @@ export function PiggyBank({ onBack, registerBackHandler }: PiggyBankProps) {
 
   return (
     <div className="relative flex h-full w-full flex-col overflow-hidden bg-transparent text-white">
-      {/* Top Header */}
+      {/* Unified Top Header (matches Home vertical position & extra safe-area padding) */}
       <header
-        style={{ paddingTop: 'max(1.35rem, env(safe-area-inset-top))' }}
-        className="relative z-20 flex items-center justify-between px-6 pb-3"
+        style={{ paddingTop: 'calc(max(12px, env(safe-area-inset-top, 0px)) + 14px)' }}
+        className="relative z-20 px-6 pb-3"
       >
-        <button
-          type="button"
-          aria-label="Back to Home"
-          onClick={() => {
-            triggerFeedback(settings.hapticsEnabled, 'tap');
-            onBack();
-          }}
-          className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.07] bg-[#1C2124]/92 text-white transition-transform hover:bg-[#242A2E] active:scale-95"
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </button>
-
-        <span className="text-[17px] font-semibold tracking-tight text-white">Piggy Bank</span>
-
-        <div className="relative">
+        <div className="relative flex h-11 items-center justify-between">
           <button
             type="button"
-            aria-label="Jar options"
+            aria-label="Back to Home"
             onClick={() => {
               triggerFeedback(settings.hapticsEnabled, 'tap');
-              setMenuOpen((o) => !o);
+              onBack();
             }}
-            className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.07] bg-[#1C2124]/92 text-white transition-transform hover:bg-[#242A2E] active:scale-95"
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[#1C2124]/92 text-white transition-transform hover:bg-[#242A2E] active:scale-95"
           >
-            <MoreHorizontal className="h-5 w-5" />
+            <ChevronLeft className="h-5 w-5" />
           </button>
 
-          <AnimatePresence>
-            {menuOpen && (
-              <motion.div
-                initial={{ opacity: 0, y: -6, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -6, scale: 0.95 }}
-                className="absolute right-0 top-13 z-30 w-48 rounded-2xl border border-white/10 bg-[#1A1D21] p-1.5 shadow-lg"
-              >
-                <p className="px-3 py-1.5 text-[11px] font-medium text-[#8E959B]">
-                  Total Saved: {formatCurrency(totalPiggyBank, settings.currency)}
-                </p>
-                <div className="my-1 h-px bg-white/[0.06]" />
-                {(
-                  [
-                    { id: 'created', label: 'Sort: Default' },
-                    { id: 'balance', label: 'Sort: Highest Balance' },
-                    { id: 'name', label: 'Sort: Name' },
-                  ] as const
-                ).map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => {
-                      setSortBy(opt.id);
-                      setMenuOpen(false);
-                    }}
-                    className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-[13px] transition-colors ${
-                      sortBy === opt.id
-                        ? 'bg-white/10 font-semibold text-white'
-                        : 'text-[#C8CFD5] hover:bg-white/5'
-                    }`}
-                  >
-                    <span>{opt.label}</span>
-                    {sortBy === opt.id && <Check className="h-3.5 w-3.5" />}
-                  </button>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <h1 className="text-[17px] leading-[1.2] font-semibold tracking-tight text-white">
+            Savings Jar
+          </h1>
+
+          <div className="relative">
+            <button
+              type="button"
+              aria-label="Jar options"
+              onClick={() => {
+                triggerFeedback(settings.hapticsEnabled, 'tap');
+                setMenuOpen((o) => !o);
+              }}
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[#1C2124]/92 text-white transition-transform hover:bg-[#242A2E] active:scale-95"
+            >
+              <MoreHorizontal className="h-5 w-5" />
+            </button>
+
+            <AnimatePresence>
+              {menuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -6, scale: 0.95 }}
+                  className="absolute right-0 top-13 z-30 w-48 rounded-2xl border border-white/10 bg-[#1A1D21] p-1.5 shadow-lg"
+                >
+                  <p className="px-3 py-1.5 text-[11px] font-medium text-[#8E959B]">
+                    Total Saved: {formatCurrency(totalSavingsJar, settings.currency)}
+                  </p>
+                  <div className="my-1 h-px bg-white/[0.06]" />
+                  {(
+                    [
+                      { id: 'created', label: 'Sort: Default' },
+                      { id: 'balance', label: 'Sort: Highest Balance' },
+                      { id: 'name', label: 'Sort: Name' },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setSortBy(opt.id);
+                        setMenuOpen(false);
+                      }}
+                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-[13px] transition-colors ${
+                        sortBy === opt.id
+                          ? 'bg-white/10 font-semibold text-white'
+                          : 'text-[#C8CFD5] hover:bg-white/5'
+                      }`}
+                    >
+                      <span>{opt.label}</span>
+                      {sortBy === opt.id && <Check className="h-3.5 w-3.5" />}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </header>
 
-      {/* Title + New Jar Button */}
-      <div className="relative z-10 flex items-center justify-between px-6 pt-3 pb-4">
-        <h1 className="text-[28px] font-bold tracking-tight text-white">Piggy Bank</h1>
+      {/* Total Saved Summary + New Jar Button */}
+      <div className="relative z-10 flex items-center justify-between px-6 pt-2 pb-4">
+        <div>
+          <p className="text-[12px] font-medium text-[#8E959B]">Total Saved</p>
+          <AnimatedNumber
+            value={totalSavingsJar}
+            currency={settings.currency}
+            className="mt-0.5 block text-[26px] leading-tight font-bold tracking-tight text-white"
+          />
+        </div>
         <motion.button
           type="button"
           whileTap={{ scale: 0.95 }}
           onClick={openCreateModal}
-          className="min-h-[40px] rounded-full bg-white px-4 py-2 text-[13px] font-semibold text-[#0B0F10] shadow-sm transition-colors hover:bg-neutral-100"
+          className="min-h-[42px] rounded-full bg-white px-4.5 py-2 text-[13px] font-semibold text-[#0B0F10] shadow-[0_0_16px_rgba(255,255,255,0.22)] transition-colors hover:bg-neutral-100"
         >
           + New jar
         </motion.button>
       </div>
 
-      {/* Jars List */}
+      {/* 2-Column Jar Grid */}
       <div className="no-scrollbar relative z-10 flex-1 touch-pan-y overflow-y-auto px-6 pb-10">
         {sortedJars.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mt-4 flex flex-col items-center rounded-[24px] border border-white/[0.06] bg-[#1A1D21]/92 px-6 py-12 text-center"
+            className="mt-4 flex flex-col items-center rounded-[24px] border border-white/[0.08] bg-[#1A1D21]/92 px-6 py-12 text-center shadow-[0_0_20px_rgba(124,92,245,0.16)]"
           >
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.06] text-[#8E959B]">
-              <PiggyIcon className="h-7 w-7" />
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/[0.06]">
+              <JarMiniIcon />
             </div>
             <h2 className="text-[16px] font-semibold text-white">No savings jars yet</h2>
             <p className="mt-1.5 max-w-[240px] text-[13px] text-[#8E959B]">
@@ -495,114 +500,119 @@ export function PiggyBank({ onBack, registerBackHandler }: PiggyBankProps) {
                       <label className="mb-1.5 block text-[12px] font-medium text-[#8E959B]">
                         Jar Name
                       </label>
-                    <input
-                      type="text"
-                      required
-                      autoFocus
-                      value={jarName}
-                      onChange={(e) => setJarName(e.target.value)}
-                      placeholder="e.g. Emergency Fund"
-                      className="w-full rounded-2xl border border-white/10 bg-[#1C2126] px-4 py-3 text-[15px] text-white placeholder:text-[#6B7280] focus:border-white/30 focus:outline-none"
-                    />
+                      <input
+                        type="text"
+                        required
+                        autoFocus
+                        value={jarName}
+                        onChange={(e) => setJarName(e.target.value)}
+                        placeholder="e.g. Emergency Fund"
+                        className="w-full rounded-2xl border border-white/10 bg-[#1C2126] px-4 py-3 text-[15px] text-white placeholder:text-[#6B7280] focus:border-white/30 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-[12px] font-medium text-[#8E959B]">
+                        Jar Color
+                      </label>
+                      <div className="flex items-center gap-3">
+                        {COLOR_KEYS.map((key) => {
+                          const selected = jarColor === key;
+                          return (
+                            <button
+                              key={key}
+                              type="button"
+                              aria-label={JAR_COLOR_STYLES[key].label}
+                              onClick={() => {
+                                triggerFeedback(settings.hapticsEnabled, 'tap');
+                                setJarColor(key);
+                              }}
+                              style={{
+                                backgroundColor: JAR_COLOR_STYLES[key].bg,
+                                boxShadow: selected ? JAR_COLOR_STYLES[key].glow : undefined,
+                              }}
+                              className={`flex h-10 w-10 items-center justify-center rounded-full transition-transform active:scale-90 ${
+                                selected
+                                  ? 'ring-2 ring-white ring-offset-2 ring-offset-[#14181B]'
+                                  : 'opacity-80 hover:opacity-100'
+                              }`}
+                            >
+                              {selected && (
+                                <Check
+                                  className="h-4 w-4 stroke-[3]"
+                                  style={{ color: JAR_COLOR_STYLES[key].text }}
+                                />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-[12px] font-medium text-[#8E959B]">
+                        Goal Amount (optional)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={jarGoal}
+                        onChange={(e) => setJarGoal(e.target.value)}
+                        placeholder="e.g. 5000"
+                        className="w-full rounded-2xl border border-white/10 bg-[#1C2126] px-4 py-3 text-[15px] text-white placeholder:text-[#6B7280] focus:border-white/30 focus:outline-none"
+                      />
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="mb-2 block text-[12px] font-medium text-[#8E959B]">
-                      Jar Color
-                    </label>
-                    <div className="flex items-center gap-3">
-                      {COLOR_KEYS.map((key) => {
-                        const selected = jarColor === key;
-                        return (
+                  <div className="mt-6 space-y-2.5">
+                    <motion.button
+                      type="submit"
+                      whileTap={{ scale: 0.98 }}
+                      className="min-h-[48px] w-full rounded-full bg-white py-3 text-[15px] font-semibold text-[#0B0F10] transition-colors hover:bg-neutral-100"
+                    >
+                      {jarModalMode === 'create' ? 'Create Jar' : 'Save Changes'}
+                    </motion.button>
+
+                    {jarModalMode === 'edit' && editingJar && (
+                      <div className="pt-1">
+                        {!confirmDelete ? (
                           <button
-                            key={key}
                             type="button"
-                            aria-label={JAR_COLOR_STYLES[key].label}
-                            onClick={() => {
-                              triggerFeedback(settings.hapticsEnabled, 'tap');
-                              setJarColor(key);
-                            }}
-                            style={{ backgroundColor: JAR_COLOR_STYLES[key].bg }}
-                            className={`flex h-10 w-10 items-center justify-center rounded-full transition-transform active:scale-90 ${
-                              selected ? 'ring-2 ring-white ring-offset-2 ring-offset-[#14181B]' : 'opacity-80 hover:opacity-100'
-                            }`}
+                            onClick={() => setConfirmDelete(true)}
+                            className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full border border-red-500/25 bg-red-500/10 py-2.5 text-[14px] font-medium text-red-400 transition-colors hover:bg-red-500/15"
                           >
-                            {selected && (
-                              <Check
-                                className="h-4 w-4 stroke-[3]"
-                                style={{ color: JAR_COLOR_STYLES[key].text }}
-                              />
-                            )}
+                            <Trash2 className="h-4 w-4" />
+                            <span>Delete Jar</span>
                           </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="mb-1.5 block text-[12px] font-medium text-[#8E959B]">
-                      Goal Amount (optional)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="any"
-                      value={jarGoal}
-                      onChange={(e) => setJarGoal(e.target.value)}
-                      placeholder={`e.g. 5000`}
-                      className="w-full rounded-2xl border border-white/10 bg-[#1C2126] px-4 py-3 text-[15px] text-white placeholder:text-[#6B7280] focus:border-white/30 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-6 space-y-2.5">
-                  <motion.button
-                    type="submit"
-                    whileTap={{ scale: 0.98 }}
-                    className="min-h-[48px] w-full rounded-full bg-white py-3 text-[15px] font-semibold text-[#0B0F10] transition-colors hover:bg-neutral-100"
-                  >
-                    {jarModalMode === 'create' ? 'Create Jar' : 'Save Changes'}
-                  </motion.button>
-
-                  {jarModalMode === 'edit' && editingJar && (
-                    <div className="pt-1">
-                      {!confirmDelete ? (
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDelete(true)}
-                          className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full border border-red-500/25 bg-red-500/10 py-2.5 text-[14px] font-medium text-red-400 transition-colors hover:bg-red-500/15"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          <span>Delete Jar</span>
-                        </button>
-                      ) : (
-                        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-3 text-center">
-                          <p className="text-[12px] text-red-200">
-                            {editingJar.balance > 0
-                              ? `Return ${formatCurrency(editingJar.balance, settings.currency)} to main balance and delete "${editingJar.name}"?`
-                              : `Delete "${editingJar.name}" permanently?`}
-                          </p>
-                          <div className="mt-2.5 flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setConfirmDelete(false)}
-                              className="flex-1 rounded-full bg-white/10 py-2 text-[13px] font-medium text-white"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleConfirmDelete}
-                              className="flex-1 rounded-full bg-red-500 py-2 text-[13px] font-semibold text-white"
-                            >
-                              Confirm Delete
-                            </button>
+                        ) : (
+                          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-3 text-center">
+                            <p className="text-[12px] text-red-200">
+                              {editingJar.balance > 0
+                                ? `Return ${formatCurrency(editingJar.balance, settings.currency)} to main balance and delete "${editingJar.name}"?`
+                                : `Delete "${editingJar.name}" permanently?`}
+                            </p>
+                            <div className="mt-2.5 flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDelete(false)}
+                                className="flex-1 rounded-full bg-white/10 py-2 text-[13px] font-medium text-white"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleConfirmDelete}
+                                className="flex-1 rounded-full bg-red-500 py-2 text-[13px] font-semibold text-white"
+                              >
+                                Confirm Delete
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </motion.form>
             </div>
@@ -702,10 +712,7 @@ export function PiggyBank({ onBack, registerBackHandler }: PiggyBankProps) {
                       transferAmount <= 0 ? 'text-[#CBD5E1]' : 'text-[#111827]'
                     }`}
                   >
-                    {settings.currency}{' '}
-                    {transferAmountStr
-                      ? transferAmountStr
-                      : '0.00'}
+                    {settings.currency} {transferAmountStr ? transferAmountStr : '0.00'}
                   </p>
 
                   {transferExceedsBalance && (
@@ -750,11 +757,11 @@ export function PiggyBank({ onBack, registerBackHandler }: PiggyBankProps) {
                   whileTap={{ scale: 0.97 }}
                   disabled={transferAmount <= 0 || transferExceedsJar}
                   onClick={handleConfirmTransfer}
-                  className="mt-3 min-h-[48px] w-full rounded-full bg-[#1ED82B] py-3 text-[15px] font-semibold text-white shadow-sm transition-opacity disabled:opacity-40"
+                  className="mt-3 min-h-[48px] w-full rounded-full bg-[#1ED82B] py-3 text-[15px] font-semibold text-white shadow-[0_0_16px_rgba(30,216,43,0.34)] transition-opacity disabled:opacity-40"
                 >
                   {transferDir === 'deposit'
                     ? `Add to ${transferJar.name}`
-                    : `Withdraw to Balance`}
+                    : 'Withdraw to Balance'}
                 </motion.button>
               </motion.div>
             </div>

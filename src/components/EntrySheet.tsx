@@ -40,14 +40,23 @@ export function EntrySheet({
 
   const sheetDragControls = useDragControls();
   const swipeX = useMotionValue(0);
-  const greenOpacity = useTransform(swipeX, [0, 35, 130], [0, 0.88, 1]);
-  const greenScale = useTransform(swipeX, [0, 140], [0.92, 1]);
-  const greenX = useTransform(swipeX, [0, 140], [-20, 0]);
+  const greenOpacity = useTransform(swipeX, [0, 28, 125], [0, 0.72, 1]);
   const checkPreviewOpacity = useTransform(swipeX, [35, 110], [0, 1]);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const pillBtnRef = useRef<HTMLButtonElement>(null);
+  const [dropdownTop, setDropdownTop] = useState<number>(138);
 
-  const activeCategories = mode === 'spend' ? spendCategories : addCategories;
+  const activeCategories = useMemo(() => {
+    const raw = mode === 'spend' ? spendCategories : addCategories;
+    const seen = new Set<string>();
+    return raw.filter((cat) => {
+      const key = cat.name.trim().toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [mode, spendCategories, addCategories]);
 
   // Reset state whenever newly opened
   useEffect(() => {
@@ -124,6 +133,14 @@ export function EntrySheet({
   const isEmpty = numericAmount <= 0 && !amountStr;
   const exceedsBalance = mode === 'spend' && numericAmount > balance;
   const projectedBalance = balance - numericAmount;
+
+  // Keep category dropdown anchored cleanly below pill without getting clipped by overflow-hidden
+  useEffect(() => {
+    if (!dropdownOpen || !pillBtnRef.current || !dropdownRef.current) return;
+    const pillRect = pillBtnRef.current.getBoundingClientRect();
+    const wrapRect = dropdownRef.current.getBoundingClientRect();
+    setDropdownTop(Math.round(pillRect.bottom - wrapRect.top + 10));
+  }, [dropdownOpen, exceedsBalance, numericAmount]);
 
   const handleKeyPress = (key: string) => {
     triggerFeedback(settings.hapticsEnabled, 'tap');
@@ -341,181 +358,187 @@ export function EntrySheet({
                 )}
               </AnimatePresence>
 
-              {/* Middle Swipe-to-Confirm Area */}
-              <div className="relative my-2 flex flex-1 flex-col items-center justify-center py-6">
-                {/* Floating Green Card (morphs smoothly to Fullscreen ConfirmScreen via layoutId) */}
-                {!isConfirming && (
-                  <motion.div
-                    layoutId="confirm-green-morph"
-                    aria-hidden="true"
-                    style={{
-                      borderRadius: 28,
-                      opacity: numericAmount > 0 ? greenOpacity : 0,
-                      scale: numericAmount > 0 ? greenScale : 0.92,
-                      x: numericAmount > 0 ? greenX : 0,
-                      boxShadow: '0 8px 24px rgba(30, 216, 43, 0.24)',
-                    }}
-                    className="pointer-events-none absolute inset-y-2 inset-x-0 flex items-center justify-start bg-[#1ED82B] pl-7 will-change-transform"
-                  >
+              {/* Middle Swipe-to-Confirm Area (outer wrapper keeps category popover unclipped) */}
+              <div
+                ref={dropdownRef}
+                className="relative my-2 flex flex-1 flex-col items-center justify-center"
+              >
+                {/* Fixed-Size Rounded Clipped Box */}
+                <div className="relative flex min-h-[188px] w-full flex-1 flex-col items-center justify-center overflow-hidden rounded-[28px] py-6">
+                  {/* Fixed-Size Green Box (opacity 0 before swipe, rises smoothly while swiping) */}
+                  {!isConfirming && (
                     <motion.div
-                      style={{ opacity: checkPreviewOpacity }}
-                      className="flex items-center gap-2.5 text-white"
-                    >
-                      <Check className="h-7 w-7 stroke-[3]" />
-                      <span className="text-[15px] font-semibold">Release to confirm</span>
-                    </motion.div>
-                  </motion.div>
-                )}
-
-                {/* Draggable Middle Content */}
-                <motion.div
-                  key={shakeTrigger}
-                  animate={
-                    shakeTrigger > 0 ? { x: [0, -10, 10, -7, 7, -3, 3, 0] } : { x: 0 }
-                  }
-                  transition={{ duration: 0.32 }}
-                  drag={dropdownOpen || isConfirming ? false : 'x'}
-                  dragConstraints={{ left: 0, right: 240 }}
-                  dragElastic={{ left: 0.06, right: 0.35 }}
-                  dragSnapToOrigin
-                  style={{ x: swipeX }}
-                  onDragEnd={handleSwipeEnd}
-                  className="relative z-10 flex w-full cursor-grab flex-col items-center justify-center select-none active:cursor-grabbing"
-                >
-                  {/* Large Amount Readout */}
-                  <motion.div
-                    key={mode}
-                    initial={{ opacity: 0.65, y: 3 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.14 }}
-                    className={`flex items-baseline justify-center gap-2.5 text-[44px] leading-none font-bold tracking-tight tabular-nums transition-colors duration-150 ${
-                      isEmpty ? 'text-[#CBD5E1]' : 'text-[#111827]'
-                    }`}
-                  >
-                    <span>{settings.currency}</span>
-                    <span>{formattedDisplay}</span>
-                  </motion.div>
-
-                  {/* Category Pill + Popover */}
-                  <div ref={dropdownRef} className="relative mt-4">
-                    <motion.button
-                      type="button"
-                      whileTap={{ scale: 0.95 }}
-                      transition={{ type: 'spring', stiffness: 700, damping: 32 }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={() => {
-                        triggerFeedback(settings.hapticsEnabled, 'tap');
-                        setDropdownOpen((o) => !o);
+                      layoutId="confirm-green-morph"
+                      aria-hidden="true"
+                      style={{
+                        borderRadius: 28,
+                        opacity: numericAmount > 0 ? greenOpacity : 0,
+                        boxShadow: '0 8px 24px rgba(30, 216, 43, 0.24)',
                       }}
-                      className="flex min-h-[38px] items-center gap-2 rounded-full border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-1.5 text-[14px] font-medium text-[#1F2937] shadow-xs hover:bg-[#F1F5F9]"
+                      className="pointer-events-none absolute inset-0 flex items-center justify-start bg-[#1ED82B] pl-7 will-change-transform"
                     >
-                      <span
-                        className="h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: selectedCategory?.color || '#F59E0B' }}
-                      />
-                      <span className="max-w-[180px] truncate">
-                        {isOthersSelected && customNote.trim()
-                          ? customNote.trim()
-                          : selectedCategory?.name}
-                      </span>
-                      <ChevronDown
-                        className={`h-4 w-4 text-[#6B7280] transition-transform duration-150 ${
-                          dropdownOpen ? 'rotate-180' : ''
-                        }`}
-                      />
-                    </motion.button>
+                      <motion.div
+                        style={{ opacity: checkPreviewOpacity }}
+                        className="flex items-center gap-2.5 text-white"
+                      >
+                        <Check className="h-7 w-7 stroke-[3]" />
+                        <span className="text-[15px] font-semibold">Release to confirm</span>
+                      </motion.div>
+                    </motion.div>
+                  )}
 
-                    {/* Dropdown Popover */}
+                  {/* Draggable Middle Content (clipped cleanly inside the fixed rounded box) */}
+                  <motion.div
+                    key={shakeTrigger}
+                    animate={
+                      shakeTrigger > 0 ? { x: [0, -10, 10, -7, 7, -3, 3, 0] } : { x: 0 }
+                    }
+                    transition={{ duration: 0.32 }}
+                    drag={dropdownOpen || isConfirming ? false : 'x'}
+                    dragConstraints={{ left: 0, right: 240 }}
+                    dragElastic={{ left: 0.06, right: 0.35 }}
+                    dragSnapToOrigin
+                    style={{ x: swipeX }}
+                    onDragEnd={handleSwipeEnd}
+                    className="relative z-10 flex w-full cursor-grab flex-col items-center justify-center select-none active:cursor-grabbing"
+                  >
+                    {/* Large Amount Readout */}
+                    <motion.div
+                      key={mode}
+                      initial={{ opacity: 0.65, y: 3 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.14 }}
+                      className={`flex items-baseline justify-center gap-2.5 text-[44px] leading-none font-bold tracking-tight tabular-nums transition-colors duration-150 ${
+                        isEmpty ? 'text-[#CBD5E1]' : 'text-[#111827]'
+                      }`}
+                    >
+                      <span>{settings.currency}</span>
+                      <span>{formattedDisplay}</span>
+                    </motion.div>
+
+                    {/* Category Pill */}
+                    <div className="relative mt-4">
+                      <motion.button
+                        ref={pillBtnRef}
+                        type="button"
+                        whileTap={{ scale: 0.95 }}
+                        transition={{ type: 'spring', stiffness: 700, damping: 32 }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={() => {
+                          triggerFeedback(settings.hapticsEnabled, 'tap');
+                          setDropdownOpen((o) => !o);
+                        }}
+                        className="flex min-h-[38px] items-center gap-2 rounded-full border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-1.5 text-[14px] font-medium text-[#1F2937] shadow-xs hover:bg-[#F1F5F9]"
+                      >
+                        <span
+                          className="h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: selectedCategory?.color || '#F59E0B' }}
+                        />
+                        <span className="max-w-[180px] truncate">
+                          {isOthersSelected && customNote.trim()
+                            ? customNote.trim()
+                            : selectedCategory?.name}
+                        </span>
+                        <ChevronDown
+                          className={`h-4 w-4 text-[#6B7280] transition-transform duration-150 ${
+                            dropdownOpen ? 'rotate-180' : ''
+                          }`}
+                        />
+                      </motion.button>
+                    </div>
+
+                    {/* Subtle Swipe-Right Hint once amount > 0 */}
                     <AnimatePresence>
-                      {dropdownOpen && (
+                      {numericAmount > 0 && (
                         <motion.div
-                          initial={{ opacity: 0, y: -6, scale: 0.96 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: -4, scale: 0.96 }}
-                          transition={{ type: 'spring', stiffness: 500, damping: 34 }}
-                          onPointerDown={(e) => e.stopPropagation()}
-                          className="absolute left-1/2 top-full z-30 mt-2.5 w-[264px] -translate-x-1/2 rounded-[24px] border border-gray-100 bg-white p-2 shadow-xl"
+                          initial={{ opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 2 }}
+                          transition={{ duration: 0.15 }}
+                          className="mt-5 flex items-center gap-1.5 text-[12px] font-medium text-[#9CA3AF]"
                         >
-                          <div className="space-y-0.5">
-                            {activeCategories.map((cat) => {
-                              const isSelected = cat.id === selectedCategory?.id;
-                              return (
-                                <button
-                                  key={cat.id}
-                                  type="button"
-                                  onClick={() => {
-                                    triggerFeedback(settings.hapticsEnabled, 'tap');
-                                    setSelectedCategoryId(cat.id);
-                                    if (!cat.isOthers && cat.name.toLowerCase() !== 'others') {
-                                      setDropdownOpen(false);
-                                    }
-                                  }}
-                                  className={`flex w-full items-center justify-between rounded-[16px] px-3.5 py-2.5 text-left text-[14px] ${
-                                    isSelected
-                                      ? 'bg-[#F3F4F6] font-semibold text-[#111827]'
-                                      : 'font-normal text-[#374151] hover:bg-gray-50'
-                                  }`}
-                                >
-                                  <span className="flex items-center gap-2.5">
-                                    <span
-                                      className="h-2.5 w-2.5 shrink-0 rounded-full"
-                                      style={{ backgroundColor: cat.color }}
-                                    />
-                                    <span>{cat.name}</span>
-                                  </span>
-                                  {isSelected && <Check className="h-4 w-4 text-[#111827]" />}
-                                </button>
-                              );
-                            })}
-                          </div>
-
-                          {/* Specify input for Others */}
-                          {isOthersSelected && (
-                            <div className="mt-1.5 px-1 pb-1">
-                              <input
-                                type="text"
-                                autoFocus
-                                value={customNote}
-                                onChange={(e) => setCustomNote(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') setDropdownOpen(false);
-                                }}
-                                placeholder={
-                                  mode === 'spend'
-                                    ? 'Specify (e.g. Date)...'
-                                    : 'Specify (e.g. Paid Debt)...'
-                                }
-                                className="w-full rounded-[14px] border border-[#E5E7EB] bg-white px-3.5 py-2.5 text-[13px] text-[#111827] placeholder:text-[#9CA3AF] focus:border-[#111827] focus:outline-none"
-                              />
-                            </div>
-                          )}
+                          <span>Swipe right to confirm</span>
+                          <motion.span
+                            animate={{ x: [0, 5, 0] }}
+                            transition={{ repeat: Infinity, duration: 1.4, ease: 'easeInOut' }}
+                            className="inline-flex text-[#16A34A]"
+                          >
+                            <ChevronsRight className="h-4 w-4" />
+                          </motion.span>
                         </motion.div>
                       )}
                     </AnimatePresence>
-                  </div>
+                  </motion.div>
+                </div>
 
-                  {/* Subtle Swipe-Right Hint once amount > 0 */}
-                  <AnimatePresence>
-                    {numericAmount > 0 && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 4 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 2 }}
-                        transition={{ duration: 0.15 }}
-                        className="mt-5 flex items-center gap-1.5 text-[12px] font-medium text-[#9CA3AF]"
-                      >
-                        <span>Swipe right to confirm</span>
-                        <motion.span
-                          animate={{ x: [0, 5, 0] }}
-                          transition={{ repeat: Infinity, duration: 1.4, ease: 'easeInOut' }}
-                          className="inline-flex text-[#16A34A]"
-                        >
-                          <ChevronsRight className="h-4 w-4" />
-                        </motion.span>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
+                {/* Category Dropdown Popover (anchored to pill, outside overflow-hidden) */}
+                <AnimatePresence>
+                  {dropdownOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -4, scale: 0.96 }}
+                      transition={{ type: 'spring', stiffness: 500, damping: 34 }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      style={{ top: dropdownTop }}
+                      className="absolute left-1/2 z-30 w-[264px] -translate-x-1/2 rounded-[24px] border border-gray-100 bg-white p-2 shadow-xl"
+                    >
+                      <div className="space-y-0.5">
+                        {activeCategories.map((cat) => {
+                          const isSelected = cat.id === selectedCategory?.id;
+                          return (
+                            <button
+                              key={cat.id}
+                              type="button"
+                              onClick={() => {
+                                triggerFeedback(settings.hapticsEnabled, 'tap');
+                                setSelectedCategoryId(cat.id);
+                                if (!cat.isOthers && cat.name.toLowerCase() !== 'others') {
+                                  setDropdownOpen(false);
+                                }
+                              }}
+                              className={`flex w-full items-center justify-between rounded-[16px] px-3.5 py-2.5 text-left text-[14px] ${
+                                isSelected
+                                  ? 'bg-[#F3F4F6] font-semibold text-[#111827]'
+                                  : 'font-normal text-[#374151] hover:bg-gray-50'
+                              }`}
+                            >
+                              <span className="flex items-center gap-2.5">
+                                <span
+                                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                  style={{ backgroundColor: cat.color }}
+                                />
+                                <span>{cat.name}</span>
+                              </span>
+                              {isSelected && <Check className="h-4 w-4 text-[#111827]" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Specify input for Others */}
+                      {isOthersSelected && (
+                        <div className="mt-1.5 px-1 pb-1">
+                          <input
+                            type="text"
+                            autoFocus
+                            value={customNote}
+                            onChange={(e) => setCustomNote(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') setDropdownOpen(false);
+                            }}
+                            placeholder={
+                              mode === 'spend'
+                                ? 'Specify (e.g. Date)...'
+                                : 'Specify (e.g. Paid Debt)...'
+                            }
+                            className="w-full rounded-[14px] border border-[#E5E7EB] bg-white px-3.5 py-2.5 text-[13px] text-[#111827] placeholder:text-[#9CA3AF] focus:border-[#111827] focus:outline-none"
+                          />
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
               {/* Custom Number Pad */}

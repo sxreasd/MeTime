@@ -6,7 +6,7 @@ import { INTRO_TIMING, IntroSequence, IntroStage } from './components/IntroSeque
 import { Home } from './components/Home';
 import { EntrySheet } from './components/EntrySheet';
 import { ConfirmScreen } from './components/ConfirmScreen';
-import { PiggyBank } from './components/PiggyBank';
+import { SavingsJar } from './components/SavingsJar';
 import { Analytics } from './components/Analytics';
 import { SettingsView } from './components/SettingsView';
 import { ComingSoonView } from './components/ComingSoonView';
@@ -18,6 +18,30 @@ import {
   isNativeCapacitor,
   registerNativeBackListener,
 } from './utils/capacitor';
+
+function buildStarburstPoints(
+  cx: number,
+  cy: number,
+  outerR: number,
+  innerR: number,
+  points = 16,
+  rotateDeg = 0
+): string {
+  const coords: string[] = [];
+  const total = points * 2;
+  const offsetRad = (rotateDeg * Math.PI) / 180;
+  for (let i = 0; i < total; i++) {
+    const r = i % 2 === 0 ? outerR : innerR;
+    const angle = offsetRad + (i * Math.PI) / points;
+    const x = cx + Math.cos(angle) * r;
+    const y = cy + Math.sin(angle) * r;
+    coords.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+  }
+  return coords.join(' ');
+}
+
+const TOP_STARBURST = buildStarburstPoints(312, 198, 228, 48, 16, 11);
+const BOTTOM_STARBURST = buildStarburstPoints(54, 756, 222, 46, 16, -9);
 
 function MeTimeAppShell() {
   const [navStack, setNavStack] = useState<AppScreen[]>(['home']);
@@ -114,52 +138,41 @@ function MeTimeAppShell() {
   // Unified hardware/browser back handler
   const backHandlerRef = useRef<() => void>(() => {});
   backHandlerRef.current = () => {
-    // 0. Block back actions while cold-start intro is blocking taps
-    if (introActive) {
-      return;
-    }
+    if (introActive) return;
 
-    // 1. If exit dialog is open, dismiss it (Stay)
     if (showExitDialog) {
       setShowExitDialog(false);
       return;
     }
 
-    // 2. If green confirmation screen is open, close it and return to Home
     if (confirmation) {
       setConfirmation(null);
       setNavStack(['home']);
       return;
     }
 
-    // 3. If Spend/Add sheet is open, close dropdown first or close sheet
     if (entryState.open) {
       if (entryBackRef.current?.()) return;
       setEntryState((s) => ({ ...s, open: false, confirming: false }));
       return;
     }
 
-    // 4. If a sub-page modal/sheet/menu (Piggy Bank / Analytics / Settings) is open, close it first
     if (subModalBackRef.current?.()) {
       return;
     }
 
-    // 5. If on Home and Transactions panel (or its filter/search) is expanded, collapse it first
     if (screen === 'home' && homeBackRef.current?.()) {
       return;
     }
 
-    // 6. If on any sub-page or non-Home tab, pop back to previous page (Home)
     if (navStack.length > 1) {
       popScreen();
       return;
     }
 
-    // 7. On Home with nothing open: show Exit confirmation dialog
     setShowExitDialog(true);
   };
 
-  // Attach ONE back listener cleanly (Capacitor native OR browser popstate fallback)
   useEffect(() => {
     if (isNativeCapacitor()) {
       return registerNativeBackListener(() => {
@@ -167,7 +180,6 @@ function MeTimeAppShell() {
       });
     }
 
-    // Web / WebView fallback using history guard state
     try {
       window.history.replaceState({ metimeRoot: true }, '');
       window.history.pushState({ metimeGuard: true }, '');
@@ -221,7 +233,7 @@ function MeTimeAppShell() {
       >
         {/* True edge-to-edge on phones (<501px), centered phone frame only on desktop (>500px) */}
         <main className="relative h-full w-full overflow-hidden bg-[#05060D] min-[501px]:h-[min(860px,94dvh)] min-[501px]:max-w-[420px] min-[501px]:rounded-[40px] min-[501px]:border min-[501px]:border-white/[0.08] min-[501px]:shadow-2xl">
-          {/* Single Fixed Static Background Image Layer (renders once behind all dark screens) */}
+          {/* Single Fixed Static Vector Background (smooth CSS radial glows + crisp SVG starbursts) */}
           <motion.div
             aria-hidden="true"
             initial={introStage === 'hidden' ? { opacity: 0 } : false}
@@ -237,15 +249,36 @@ function MeTimeAppShell() {
             }
             style={{
               backgroundColor: '#05060D',
-              backgroundImage: "url('/bg.jpg')",
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-              backgroundRepeat: 'no-repeat',
+              backgroundImage: [
+                'radial-gradient(66% 48% at 86% 24%, rgba(36, 44, 118, 0.44) 0%, rgba(16, 18, 52, 0.16) 54%, transparent 82%)',
+                'radial-gradient(62% 44% at 14% 72%, rgba(86, 32, 102, 0.42) 0%, rgba(36, 14, 52, 0.15) 56%, transparent 84%)',
+                'radial-gradient(45% 36% at 50% 42%, rgba(18, 22, 54, 0.25) 0%, transparent 75%)',
+              ].join(', '),
             }}
             className="pointer-events-none fixed inset-0 z-0 min-[501px]:absolute"
-          />
+          >
+            <svg
+              viewBox="0 0 390 844"
+              preserveAspectRatio="xMidYMid slice"
+              className="h-full w-full"
+              fill="none"
+            >
+              <polygon
+                points={TOP_STARBURST}
+                stroke="rgba(255,255,255,0.14)"
+                strokeWidth="0.85"
+                vectorEffect="non-scaling-stroke"
+              />
+              <polygon
+                points={BOTTOM_STARBURST}
+                stroke="rgba(255,255,255,0.13)"
+                strokeWidth="0.85"
+                vectorEffect="non-scaling-stroke"
+              />
+            </svg>
+          </motion.div>
 
-          {/* Underlying Screen Stack — rendered underneath from frame 0 with zero layout jump */}
+          {/* Underlying Screen Stack */}
           <div className="relative z-10 h-full w-full">
             <AnimatePresence initial={false}>
               <motion.div
@@ -285,7 +318,7 @@ function MeTimeAppShell() {
                 {screen === 'todo' && <ComingSoonView variant="todo" />}
                 {screen === 'card_soon' && <ComingSoonView variant="card" />}
                 {screen === 'piggy' && (
-                  <PiggyBank onBack={popScreen} registerBackHandler={registerSubModalBack} />
+                  <SavingsJar onBack={popScreen} registerBackHandler={registerSubModalBack} />
                 )}
                 {screen === 'analytics' && (
                   <Analytics onBack={popScreen} registerBackHandler={registerSubModalBack} />

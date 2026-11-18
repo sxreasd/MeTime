@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 import {
   CategoryConfig,
   Jar,
+  JarCircle,
   JarColorKey,
   Settings,
   Transaction,
@@ -22,11 +23,32 @@ export const DEFAULT_CATEGORIES: CategoryConfig[] = [
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
-  name: 'MeTime User',
+  username: '',
   currency: '₱',
   startingBalance: 0,
   hapticsEnabled: true,
 };
+
+export function generateRandomJarCircles(): JarCircle[] {
+  const count = 4 + Math.floor(Math.random() * 3); // 4..6 oversized circles
+  const circles: JarCircle[] = [];
+  for (let i = 0; i < count; i++) {
+    // First two circles are guaranteed larger than card height (r: 95..160 -> dia 190..320 in 340x150 viewBox)
+    const r =
+      i < 2
+        ? Math.round((95 + Math.random() * 65) * 10) / 10
+        : Math.round((48 + Math.random() * 72) * 10) / 10;
+
+    circles.push({
+      cx: Math.round((-25 + Math.random() * 390) * 10) / 10,
+      cy: Math.round((-25 + Math.random() * 200) * 10) / 10,
+      r,
+      tone: i % 2 === 0 ? 'light' : 'dark',
+      opacity: Math.round((0.2 + Math.random() * 0.16) * 100) / 100,
+    });
+  }
+  return circles;
+}
 
 interface PersistedState {
   transactions: Transaction[];
@@ -40,17 +62,95 @@ function getInitialState(): PersistedState {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw) as Partial<PersistedState>;
+        const parsed = JSON.parse(raw) as Partial<PersistedState> & {
+          settings?: Partial<Settings> & { name?: string };
+        };
+
+        const rawSettings: Partial<Settings> & { name?: string } = parsed.settings ?? {};
+        const migratedUsername =
+          typeof rawSettings.username === 'string'
+            ? rawSettings.username
+            : typeof rawSettings.name === 'string' && rawSettings.name.trim() !== 'MeTime User'
+              ? rawSettings.name
+              : '';
+
+        const rawJars = Array.isArray(parsed.jars) ? parsed.jars : [];
+        const migratedJars: Jar[] = rawJars.map((jar) => {
+          const hasOversizedCircles =
+            Array.isArray(jar.circles) &&
+            jar.circles.length > 0 &&
+            jar.circles.some((c) => c.r > 45);
+          return {
+            ...jar,
+            circles: hasOversizedCircles ? jar.circles : generateRandomJarCircles(),
+          };
+        });
+
+        const rawTxs = Array.isArray(parsed.transactions) ? parsed.transactions : [];
+        const migratedTxs: Transaction[] = rawTxs.map((tx) =>
+          (tx.type === 'jar_deposit' || tx.type === 'jar_withdraw') && tx.category === 'Piggy Bank'
+            ? { ...tx, category: 'Savings Jar' }
+            : tx
+        );
+
+        const rawCats =
+          Array.isArray(parsed.categories) && parsed.categories.length > 0
+            ? parsed.categories
+            : DEFAULT_CATEGORIES;
+        const seenCatKeys = new Set<string>();
+        const normalizedCats: CategoryConfig[] = [];
+        for (const cat of rawCats) {
+          const cleanName = typeof cat?.name === 'string' ? cat.name.trim() : '';
+          const kind = cat?.kind === 'add' ? 'add' : 'spend';
+          if (!cleanName) continue;
+          const key = `${kind}:${cleanName.toLowerCase()}`;
+          if (seenCatKeys.has(key)) continue;
+          seenCatKeys.add(key);
+          normalizedCats.push({
+            ...cat,
+            name: cleanName,
+            kind,
+            isOthers: Boolean(cat.isOthers || cleanName.toLowerCase() === 'others'),
+          });
+        }
+        if (!normalizedCats.some((c) => c.kind === 'spend' && c.isOthers)) {
+          normalizedCats.push({
+            id: 'cat_spend_others',
+            name: 'Others',
+            color: '#10B981',
+            kind: 'spend',
+            isOthers: true,
+          });
+        }
+        if (!normalizedCats.some((c) => c.kind === 'add' && c.isOthers)) {
+          normalizedCats.push({
+            id: 'cat_add_others',
+            name: 'Others',
+            color: '#10B981',
+            kind: 'add',
+            isOthers: true,
+          });
+        }
+
         return {
-          transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
-          jars: Array.isArray(parsed.jars) ? parsed.jars : [],
-          categories:
-            Array.isArray(parsed.categories) && parsed.categories.length > 0
-              ? parsed.categories
-              : DEFAULT_CATEGORIES,
+          transactions: migratedTxs,
+          jars: migratedJars,
+          categories: normalizedCats,
           settings: {
-            ...DEFAULT_SETTINGS,
-            ...(parsed.settings || {}),
+            username: migratedUsername,
+            currency:
+              typeof rawSettings.currency === 'string' && rawSettings.currency
+                ? rawSettings.currency
+                : DEFAULT_SETTINGS.currency,
+            startingBalance:
+              typeof rawSettings.startingBalance === 'number' &&
+              Number.isFinite(rawSettings.startingBalance)
+                ? rawSettings.startingBalance
+                : DEFAULT_SETTINGS.startingBalance,
+            hapticsEnabled:
+              typeof rawSettings.hapticsEnabled === 'boolean'
+                ? rawSettings.hapticsEnabled
+                : DEFAULT_SETTINGS.hapticsEnabled,
           },
         };
       }
@@ -82,7 +182,7 @@ interface MoneyContextValue {
   todaySpending: number;
   weekSpending: number;
   monthSpending: number;
-  totalPiggyBank: number;
+  totalSavingsJar: number;
   addTransaction: (input: {
     type: TransactionType;
     category: string;
@@ -97,7 +197,13 @@ interface MoneyContextValue {
   updateJar: (id: string, updates: { name?: string; color?: JarColorKey; goal?: number }) => void;
   deleteJar: (id: string) => void;
   transferJarMoney: (jarId: string, direction: 'deposit' | 'withdraw', amount: number) => void;
+  addCategory: (input: {
+    name: string;
+    color: string;
+    kind: 'spend' | 'add';
+  }) => CategoryConfig | null;
   updateCategory: (id: string, updates: { name?: string; color?: string }) => void;
+  deleteCategory: (id: string) => void;
   updateSettings: (updates: Partial<Settings>) => void;
   resetAllData: () => void;
   exportJSON: () => string;
@@ -131,7 +237,7 @@ export function MoneyProvider({ children }: { children: React.ReactNode }) {
     [state.categories]
   );
 
-  const { balance, todaySpending, weekSpending, monthSpending, totalPiggyBank } = useMemo(() => {
+  const { balance, todaySpending, weekSpending, monthSpending, totalSavingsJar } = useMemo(() => {
     const now = new Date();
     const weekStart = startOfWeekMonday(now);
     const monthStart = startOfMonth(now);
@@ -156,14 +262,14 @@ export function MoneyProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    const piggy = state.jars.reduce((sum, j) => sum + j.balance, 0);
+    const totalJar = state.jars.reduce((sum, j) => sum + j.balance, 0);
 
     return {
       balance: Math.round(bal * 100) / 100,
       todaySpending: Math.round(today * 100) / 100,
       weekSpending: Math.round(week * 100) / 100,
       monthSpending: Math.round(month * 100) / 100,
-      totalPiggyBank: Math.round(piggy * 100) / 100,
+      totalSavingsJar: Math.round(totalJar * 100) / 100,
     };
   }, [state.settings.startingBalance, state.transactions, state.jars]);
 
@@ -268,6 +374,7 @@ export function MoneyProvider({ children }: { children: React.ReactNode }) {
       color: input.color,
       balance: 0,
       goal: input.goal && input.goal > 0 ? Math.round(input.goal * 100) / 100 : undefined,
+      circles: generateRandomJarCircles(),
       createdAt: new Date().toISOString(),
     };
     setState((prev) => ({
@@ -308,7 +415,7 @@ export function MoneyProvider({ children }: { children: React.ReactNode }) {
         nextTxs.unshift({
           id: makeId('tx'),
           type: 'jar_withdraw',
-          category: 'Piggy Bank',
+          category: 'Savings Jar',
           note: `Closed ${target.name}`,
           jarId: target.id,
           jarName: target.name,
@@ -353,7 +460,7 @@ export function MoneyProvider({ children }: { children: React.ReactNode }) {
       const newTx: Transaction = {
         id: makeId('tx'),
         type: direction === 'deposit' ? 'jar_deposit' : 'jar_withdraw',
-        category: 'Piggy Bank',
+        category: 'Savings Jar',
         note:
           direction === 'deposit'
             ? `Saved to ${target.name}`
@@ -372,28 +479,85 @@ export function MoneyProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const addCategory: MoneyContextValue['addCategory'] = (input) => {
+    const cleanName = input.name.trim();
+    if (!cleanName) return null;
+
+    const alreadyExists = state.categories.some(
+      (c) => c.kind === input.kind && c.name.trim().toLowerCase() === cleanName.toLowerCase()
+    );
+    if (alreadyExists) return null;
+
+    const newCat: CategoryConfig = {
+      id: makeId('cat'),
+      name: cleanName,
+      color: input.color || '#10B981',
+      kind: input.kind,
+    };
+
+    setState((prev) => {
+      const dup = prev.categories.some(
+        (c) => c.kind === input.kind && c.name.trim().toLowerCase() === cleanName.toLowerCase()
+      );
+      if (dup) return prev;
+
+      const othersIdx = prev.categories.findIndex(
+        (c) => c.kind === input.kind && (c.isOthers || c.name.toLowerCase() === 'others')
+      );
+      const next = [...prev.categories];
+      if (othersIdx !== -1) {
+        next.splice(othersIdx, 0, newCat);
+      } else {
+        next.push(newCat);
+      }
+      return { ...prev, categories: next };
+    });
+
+    return newCat;
+  };
+
   const updateCategory: MoneyContextValue['updateCategory'] = (id, updates) => {
     setState((prev) => {
       const oldCat = prev.categories.find((c) => c.id === id);
-      const nextName = updates.name?.trim();
-      const updatedCategories = prev.categories.map((c) =>
-        c.id === id
-          ? {
-              ...c,
-              name: nextName && nextName.length > 0 ? nextName : c.name,
-              color: updates.color || c.color,
-            }
-          : c
-      );
+      if (!oldCat) return prev;
 
-      // Keep historical transaction category names synced if renamed
+      const isOthers = Boolean(oldCat.isOthers || oldCat.name.toLowerCase() === 'others');
+      const rawNextName = updates.name?.trim();
+      const canRename =
+        !isOthers &&
+        Boolean(rawNextName) &&
+        rawNextName !== oldCat.name &&
+        !prev.categories.some(
+          (c) =>
+            c.id !== id &&
+            c.kind === oldCat.kind &&
+            c.name.trim().toLowerCase() === rawNextName!.toLowerCase()
+        );
+
+      const finalName = canRename && rawNextName ? rawNextName : oldCat.name;
+
+      const updatedCategories = prev.categories.map((c) => {
+        if (c.id === id) {
+          return {
+            ...c,
+            name: finalName,
+            color: updates.color || c.color,
+          };
+        }
+        // Keep default "Others" color consistent everywhere across the app
+        if (isOthers && updates.color && (c.isOthers || c.name.toLowerCase() === 'others')) {
+          return { ...c, color: updates.color };
+        }
+        return c;
+      });
+
       const updatedTransactions =
-        oldCat && nextName && nextName.length > 0 && nextName !== oldCat.name
+        finalName !== oldCat.name
           ? prev.transactions.map((t) =>
               t.category === oldCat.name &&
               ((oldCat.kind === 'spend' && t.type === 'spend') ||
                 (oldCat.kind === 'add' && t.type === 'add'))
-                ? { ...t, category: nextName }
+                ? { ...t, category: finalName }
                 : t
             )
           : prev.transactions;
@@ -401,6 +565,36 @@ export function MoneyProvider({ children }: { children: React.ReactNode }) {
       return {
         ...prev,
         categories: updatedCategories,
+        transactions: updatedTransactions,
+      };
+    });
+  };
+
+  const deleteCategory: MoneyContextValue['deleteCategory'] = (id) => {
+    setState((prev) => {
+      const target = prev.categories.find((c) => c.id === id);
+      if (!target) return prev;
+      if (target.isOthers || target.name.toLowerCase() === 'others') return prev;
+
+      const fallback = prev.categories.find(
+        (c) =>
+          c.kind === target.kind &&
+          c.id !== id &&
+          (c.isOthers || c.name.toLowerCase() === 'others')
+      );
+      const fallbackName = fallback?.name || 'Others';
+
+      const updatedTransactions = prev.transactions.map((t) =>
+        t.category === target.name &&
+        ((target.kind === 'spend' && t.type === 'spend') ||
+          (target.kind === 'add' && t.type === 'add'))
+          ? { ...t, category: fallbackName }
+          : t
+      );
+
+      return {
+        ...prev,
+        categories: prev.categories.filter((c) => c.id !== id),
         transactions: updatedTransactions,
       };
     });
@@ -462,7 +656,7 @@ export function MoneyProvider({ children }: { children: React.ReactNode }) {
         todaySpending,
         weekSpending,
         monthSpending,
-        totalPiggyBank,
+        totalSavingsJar,
         addTransaction,
         deleteTransaction,
         restoreTransaction,
@@ -470,7 +664,9 @@ export function MoneyProvider({ children }: { children: React.ReactNode }) {
         updateJar,
         deleteJar,
         transferJarMoney,
+        addCategory,
         updateCategory,
+        deleteCategory,
         updateSettings,
         resetAllData,
         exportJSON,

@@ -212,16 +212,24 @@ export function computeAnalytics(
   }
 
   // Category breakdown
+  const othersCat = spendCategories.find(
+    (c) => c.isOthers || c.name.toLowerCase() === 'others'
+  );
   const catMap = new Map<string, { color: string; amount: number }>();
   for (const cat of spendCategories) {
-    catMap.set(cat.name, { color: cat.color, amount: 0 });
+    if (!catMap.has(cat.name)) {
+      catMap.set(cat.name, { color: cat.color, amount: 0 });
+    }
   }
   for (const tx of currentTxs) {
     const existing = catMap.get(tx.category);
     if (existing) {
       existing.amount += tx.amount;
     } else {
-      catMap.set(tx.category, { color: '#10B981', amount: tx.amount });
+      catMap.set(tx.category, {
+        color: othersCat?.color || '#10B981',
+        amount: tx.amount,
+      });
     }
   }
 

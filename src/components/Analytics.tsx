@@ -192,6 +192,7 @@ const AnalyticsChart = memo(function AnalyticsChart({
         <motion.g
           animate={{ x: clampedCenter, y: bubbleY }}
           transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+          style={{ filter: 'drop-shadow(0 0 10px rgba(94, 235, 141, 0.38))' }}
         >
           <rect
             x={-pillWidth / 2}
@@ -317,57 +318,61 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
     <div className="relative flex h-full w-full flex-col overflow-hidden bg-transparent text-white">
       {/* Header */}
       <header
-        style={{ paddingTop: 'max(1.35rem, env(safe-area-inset-top))' }}
-        className="relative z-20 flex items-center justify-between px-6 pb-3"
+        style={{ paddingTop: 'calc(max(12px, env(safe-area-inset-top, 0px)) + 14px)' }}
+        className="relative z-20 px-6 pb-3"
       >
-        <button
-          type="button"
-          aria-label="Back to Home"
-          onClick={() => {
-            triggerFeedback(settings.hapticsEnabled, 'tap');
-            onBack();
-          }}
-          className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.07] bg-[#1C2124]/92 text-white transition-transform hover:bg-[#242A2E] active:scale-95"
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </button>
-
-        <h1 className="text-[17px] font-semibold tracking-tight text-white">Analytics</h1>
-
-        <div className="relative">
+        <div className="relative flex h-11 items-center justify-between">
           <button
             type="button"
-            aria-label="Analytics options"
+            aria-label="Back to Home"
             onClick={() => {
               triggerFeedback(settings.hapticsEnabled, 'tap');
-              setMenuOpen((o) => !o);
+              onBack();
             }}
-            className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.07] bg-[#1C2124]/92 text-white transition-transform hover:bg-[#242A2E] active:scale-95"
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[#1C2124]/92 text-white transition-transform hover:bg-[#242A2E] active:scale-95"
           >
-            <MoreHorizontal className="h-5 w-5" />
+            <ChevronLeft className="h-5 w-5" />
           </button>
 
-          <AnimatePresence>
-            {menuOpen && (
-              <motion.div
-                initial={{ opacity: 0, y: -6, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -6, scale: 0.95 }}
-                className="absolute right-0 top-13 z-30 w-52 rounded-2xl border border-white/10 bg-[#1A1D21] p-1.5 shadow-lg"
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowEmptyCats((v) => !v);
-                    setMenuOpen(false);
-                  }}
-                  className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-[13px] text-[#C8CFD5] hover:bg-white/5"
+          <h1 className="text-[17px] leading-[1.2] font-semibold tracking-tight text-white">
+            Analytics
+          </h1>
+
+          <div className="relative">
+            <button
+              type="button"
+              aria-label="Analytics options"
+              onClick={() => {
+                triggerFeedback(settings.hapticsEnabled, 'tap');
+                setMenuOpen((o) => !o);
+              }}
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[#1C2124]/92 text-white transition-transform hover:bg-[#242A2E] active:scale-95"
+            >
+              <MoreHorizontal className="h-5 w-5" />
+            </button>
+
+            <AnimatePresence>
+              {menuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -6, scale: 0.95 }}
+                  className="absolute right-0 top-13 z-30 w-52 rounded-2xl border border-white/10 bg-[#1A1D21] p-1.5 shadow-lg"
                 >
-                  <span>{showEmptyCats ? 'Hide ₱ 0 categories' : 'Show all categories'}</span>
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEmptyCats((v) => !v);
+                      setMenuOpen(false);
+                    }}
+                    className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-[13px] text-[#C8CFD5] hover:bg-white/5"
+                  >
+                    <span>{showEmptyCats ? 'Hide ₱ 0 categories' : 'Show all categories'}</span>
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </header>
 
@@ -501,7 +506,10 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
                   <div className="flex min-w-0 items-center gap-2">
                     <span
                       className="h-2.5 w-2.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: cat.color }}
+                      style={{
+                        backgroundColor: cat.color,
+                        boxShadow: `0 0 10px ${cat.color}66`,
+                      }}
                     />
                     <span className="truncate font-medium text-[#E5E7EB]">{cat.name}</span>
                   </div>
@@ -520,7 +528,10 @@ export function Analytics({ onBack, registerBackHandler }: AnalyticsProps) {
                     animate={{ scaleX: Math.max(0, Math.min(1, cat.percentage / 100)) }}
                     transition={{ type: 'spring', stiffness: 260, damping: 28 }}
                     className="h-full w-full origin-left rounded-full"
-                    style={{ backgroundColor: cat.color }}
+                    style={{
+                      backgroundColor: cat.color,
+                      boxShadow: `0 0 12px ${cat.color}66`,
+                    }}
                   />
                 </div>
               </div>

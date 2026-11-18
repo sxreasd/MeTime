@@ -21,6 +21,7 @@ import {
 } from '../utils/format';
 import { AnimatedNumber } from './AnimatedNumber';
 import { INTRO_TIMING, IntroStage } from './IntroSequence';
+import { JarMiniIcon } from './JarGraphic';
 import { SwipeableTransactionRow } from './SwipeableTransactionRow';
 
 interface HomeProps {
@@ -148,6 +149,60 @@ const panelRiseVariants: Variants = {
   settled: { opacity: 1, y: 0, transition: skipTransition },
 };
 
+const PERSONALIZED_GREETINGS: ((username: string) => string)[] = [
+  (u) => `Hello, ${u}!`,
+  (u) => `Welcome, ${u}!`,
+  (u) => `Hi ${u}!`,
+  (u) => `Good to see you, ${u}!`,
+  (u) => `Welcome back, ${u}!`,
+  (u) => `Hey ${u}, how's it going?`,
+  (u) => `Nice to see you, ${u}!`,
+  (u) => `Glad you're here, ${u}!`,
+  (u) => `Hope your day is going well, ${u}!`,
+  (u) => `Let's make today count, ${u}!`,
+];
+
+const GENERIC_GREETINGS = [
+  'Hello!',
+  'Welcome!',
+  'Hi there!',
+  'Welcome back!',
+  'Good to see you!',
+];
+
+function CardBlurBackdrop({ variant = 'card' }: { variant?: 'card' | 'alt' | 'pill' }) {
+  return (
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div className="absolute inset-0 bg-[#0A0C16]/82" />
+      <div
+        className="absolute rounded-full blur-[46px]"
+        style={{
+          width: variant === 'pill' ? '92%' : '84%',
+          height: variant === 'pill' ? '145%' : '90%',
+          top: variant === 'alt' ? '-22%' : '-28%',
+          right: variant === 'alt' ? '12%' : '-14%',
+          background:
+            variant === 'alt'
+              ? 'radial-gradient(circle, rgba(55, 48, 163, 0.72) 0%, rgba(30, 58, 138, 0.36) 62%, transparent 100%)'
+              : 'radial-gradient(circle, rgba(67, 56, 202, 0.74) 0%, rgba(49, 46, 129, 0.38) 62%, transparent 100%)',
+        }}
+      />
+      <div
+        className="absolute rounded-full blur-[48px]"
+        style={{
+          width: variant === 'pill' ? '80%' : '78%',
+          height: variant === 'pill' ? '135%' : '84%',
+          bottom: variant === 'alt' ? '-24%' : '-30%',
+          left: variant === 'alt' ? '-12%' : '-18%',
+          background:
+            'radial-gradient(circle, rgba(126, 34, 206, 0.56) 0%, rgba(88, 28, 135, 0.28) 62%, transparent 100%)',
+        }}
+      />
+      <div className="absolute inset-0 bg-[#070912]/36" />
+    </div>
+  );
+}
+
 type DateRangeFilter = 'all' | 'today' | 'week' | 'month' | 'custom';
 
 export function Home({
@@ -159,13 +214,27 @@ export function Home({
   const {
     balance,
     todaySpending,
-    totalPiggyBank,
+    totalSavingsJar,
     transactions,
     categories,
+    spendCategories,
+    addCategories,
     settings,
     deleteTransaction,
     restoreTransaction,
   } = useMoney();
+
+  // Randomize greeting once per Home mount; switch smoothly if username changes
+  const greetingRoll = useMemo(() => Math.random(), []);
+  const greetingText = useMemo(() => {
+    const clean = settings.username.trim();
+    if (clean && clean !== 'MeTime User') {
+      const idx = Math.floor(greetingRoll * PERSONALIZED_GREETINGS.length);
+      return PERSONALIZED_GREETINGS[idx](clean);
+    }
+    const idx = Math.floor(greetingRoll * GENERIC_GREETINGS.length);
+    return GENERIC_GREETINGS[idx];
+  }, [greetingRoll, settings.username]);
 
   // Panel expansion state
   const [isExpanded, setIsExpanded] = useState(false);
@@ -287,11 +356,35 @@ export function Home({
 
   const isNegative = balance < 0;
 
-  const categoryColorMap = useMemo(() => {
+  const spendColorMap = useMemo(() => {
     const map = new Map<string, string>();
-    categories.forEach((c) => map.set(c.name, c.color));
+    spendCategories.forEach((c) => map.set(c.name, c.color));
     return map;
-  }, [categories]);
+  }, [spendCategories]);
+
+  const addColorMap = useMemo(() => {
+    const map = new Map<string, string>();
+    addCategories.forEach((c) => map.set(c.name, c.color));
+    return map;
+  }, [addCategories]);
+
+  const filterCategoryOptions = useMemo(() => {
+    const source =
+      typeFilter === 'spend'
+        ? spendCategories
+        : typeFilter === 'add'
+          ? addCategories
+          : [...spendCategories, ...addCategories];
+    const seen = new Set<string>();
+    const unique: typeof categories = [];
+    for (const cat of source) {
+      const key = cat.name.trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      unique.push(cat);
+    }
+    return unique;
+  }, [spendCategories, addCategories, typeFilter]);
 
   const filteredTransactions = useMemo(() => {
     // Collapsed view always shows the clean full chronological list; filtering/searching applies in expanded view
@@ -446,11 +539,14 @@ export function Home({
   };
 
   const getDotColor = useCallback(
-    (tx: Transaction) =>
-      tx.type === 'jar_deposit' || tx.type === 'jar_withdraw'
-        ? '#4DABFF'
-        : categoryColorMap.get(tx.category) || '#10B981',
-    [categoryColorMap]
+    (tx: Transaction) => {
+      if (tx.type === 'jar_deposit' || tx.type === 'jar_withdraw') return '#4DABFF';
+      if (tx.type === 'add') {
+        return addColorMap.get(tx.category) || spendColorMap.get(tx.category) || '#10B981';
+      }
+      return spendColorMap.get(tx.category) || addColorMap.get(tx.category) || '#10B981';
+    },
+    [spendColorMap, addColorMap]
   );
 
   return (
@@ -467,7 +563,7 @@ export function Home({
           opacity: heroOpacity,
           y: heroY,
           scale: heroScale,
-          paddingTop: 'max(1.35rem, env(safe-area-inset-top))',
+          paddingTop: 'calc(max(12px, env(safe-area-inset-top, 0px)) + 14px)',
         }}
         className={`relative z-10 px-6 pb-5 ${
           isExpanded ? 'pointer-events-none' : 'pointer-events-auto'
@@ -476,7 +572,7 @@ export function Home({
         <header className="relative flex h-11 items-center justify-center">
           <motion.h1
             variants={titleVariants}
-            className="text-[17px] font-semibold tracking-tight text-white"
+            className="text-[17px] leading-[1.2] font-semibold tracking-tight text-white"
           >
             Home
           </motion.h1>
@@ -495,8 +591,16 @@ export function Home({
           </motion.button>
         </header>
 
+        {/* Randomized Greeting */}
+        <motion.p
+          variants={balanceVariants}
+          className="mt-3.5 truncate text-[14px] font-medium tracking-tight text-[#C7CDD8]"
+        >
+          {greetingText}
+        </motion.p>
+
         {/* Balance */}
-        <div className="mt-5">
+        <div className="mt-2">
           <motion.div variants={balanceVariants}>
             <p className="text-[13px] font-medium text-[#8E959B]">Balance</p>
             <div className="mt-1 flex items-baseline gap-2">
@@ -523,10 +627,20 @@ export function Home({
                 triggerFeedback(settings.hapticsEnabled, 'tap');
                 onOpenEntry('spend');
               }}
-              className="min-h-[44px] rounded-full bg-white px-6 py-2.5 text-[14px] font-semibold text-[#0B0F10] shadow-sm hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+              style={{
+                background: 'linear-gradient(180deg, #FFFFFF 0%, #F7F8FA 56%, #E8ECF2 100%)',
+                boxShadow:
+                  'inset 0 1.5px 1px rgba(255, 255, 255, 1), inset 0 -1.5px 2.5px rgba(15, 23, 42, 0.14), 0 0 14px rgba(255, 255, 255, 0.18), 0 5px 14px rgba(0, 0, 0, 0.34)',
+              }}
+              className="relative min-h-[44px] overflow-hidden rounded-full px-6 py-2.5 text-[14px] font-semibold text-[#0B0F10] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
             >
-              Spend
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-1 top-0.5 h-[48%] rounded-full bg-gradient-to-b from-white/95 via-white/35 to-transparent"
+              />
+              <span className="relative z-10">Spend</span>
             </motion.button>
+
             <motion.button
               variants={addPillVariants}
               type="button"
@@ -535,15 +649,20 @@ export function Home({
                 triggerFeedback(settings.hapticsEnabled, 'tap');
                 onOpenEntry('add');
               }}
-              className="min-h-[44px] rounded-full border border-white/[0.08] bg-[#1C2124]/92 px-7 py-2.5 text-[14px] font-medium text-[#C8CFD5] hover:bg-[#242A2E] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+              style={{
+                boxShadow:
+                  '0 0 18px rgba(108, 72, 198, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.12)',
+              }}
+              className="relative min-h-[44px] overflow-hidden rounded-full border border-white/[0.14] px-7 py-2.5 text-[14px] font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
             >
-              Add
+              <CardBlurBackdrop variant="pill" />
+              <span className="relative z-10">Add</span>
             </motion.button>
           </div>
         </div>
 
         {/* Two Summary Cards (parallel horizontal lanes, no crossing) */}
-        <div className="mt-6 grid grid-cols-2 gap-3.5">
+        <div className="mt-5 grid grid-cols-2 gap-3.5">
           <motion.button
             variants={leftCardVariants}
             type="button"
@@ -552,16 +671,23 @@ export function Home({
               triggerFeedback(settings.hapticsEnabled, 'tap');
               onNavigate('analytics');
             }}
-            className="flex flex-col justify-between rounded-[24px] border border-white/[0.07] bg-[#1A1D21]/92 p-4 text-left hover:bg-[#1F2328] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+            style={{
+              boxShadow:
+                '0 0 20px rgba(99, 75, 196, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.10)',
+            }}
+            className="relative flex flex-col justify-between overflow-hidden rounded-[24px] border border-white/[0.12] p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
           >
-            <span className="text-[12px] font-medium text-[#8E959B]">Today&apos;s Spending</span>
+            <CardBlurBackdrop variant="card" />
+            <span className="relative z-10 text-[12px] font-medium text-[#CBD2DC]">
+              Today&apos;s Spending
+            </span>
             <AnimatedNumber
               value={todaySpending}
               currency={settings.currency}
               holdAtZero={introStage === 'hidden'}
               countDelay={INTRO_TIMING.home.cardsDelay}
               countDuration={INTRO_TIMING.home.cardsDuration}
-              className="mt-2 block text-[20px] font-bold tracking-tight text-white"
+              className="relative z-10 mt-2 block text-[20px] font-bold tracking-tight text-white"
             />
           </motion.button>
 
@@ -573,12 +699,17 @@ export function Home({
               triggerFeedback(settings.hapticsEnabled, 'tap');
               onNavigate('piggy');
             }}
-            className="flex items-center justify-between gap-2 rounded-[24px] border border-white/[0.07] bg-[#1A1D21]/92 p-4 text-left hover:bg-[#1F2328] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+            style={{
+              boxShadow:
+                '0 0 20px rgba(99, 75, 196, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.10)',
+            }}
+            className="relative flex items-center justify-between gap-2 overflow-hidden rounded-[24px] border border-white/[0.12] p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
           >
-            <div className="min-w-0">
-              <span className="block text-[12px] font-medium text-[#8E959B]">Piggy Bank</span>
+            <CardBlurBackdrop variant="alt" />
+            <div className="relative z-10 min-w-0">
+              <span className="block text-[12px] font-medium text-[#CBD2DC]">Savings Jar</span>
               <AnimatedNumber
-                value={totalPiggyBank}
+                value={totalSavingsJar}
                 currency={settings.currency}
                 holdAtZero={introStage === 'hidden'}
                 countDelay={INTRO_TIMING.home.cardsDelay}
@@ -587,13 +718,8 @@ export function Home({
               />
             </div>
 
-            <div
-              aria-hidden="true"
-              className="relative h-11 w-11 shrink-0 overflow-hidden rounded-[12px] shadow-sm"
-            >
-              <div className="h-[22%] w-full bg-[#FFE226]" />
-              <div className="h-[20%] w-full bg-[#F43F5E]" />
-              <div className="h-[58%] w-full bg-[#2563EB]" />
+            <div className="relative z-10 shrink-0">
+              <JarMiniIcon />
             </div>
           </motion.button>
         </div>
@@ -606,7 +732,7 @@ export function Home({
         style={{
           opacity: expHeaderOpacity,
           y: expHeaderY,
-          paddingTop: 'max(1.35rem, env(safe-area-inset-top))',
+          paddingTop: 'calc(max(12px, env(safe-area-inset-top, 0px)) + 14px)',
         }}
         className={`absolute inset-x-0 top-0 z-10 px-6 pb-4 ${
           isExpanded ? 'pointer-events-auto' : 'pointer-events-none'
@@ -618,7 +744,7 @@ export function Home({
             if ((e.target as HTMLElement).closest('button')) return;
             panelDragControls.start(e);
           }}
-          className="flex cursor-grab touch-none items-center justify-between active:cursor-grabbing"
+          className="flex min-h-11 cursor-grab touch-none items-center justify-between active:cursor-grabbing"
         >
           <h2 className="text-[24px] font-bold tracking-tight text-white">Transactions</h2>
           <button
@@ -850,7 +976,7 @@ export function Home({
           <div
             onPointerDown={(e) => e.stopPropagation()}
             className="absolute inset-0 z-30 flex flex-col justify-start px-5"
-            style={{ paddingTop: 'calc(max(1.35rem, env(safe-area-inset-top)) + 3.25rem)' }}
+            style={{ paddingTop: 'calc(max(12px, env(safe-area-inset-top, 0px)) + 4.1rem)' }}
           >
             <motion.div
               initial={{ opacity: 0 }}
@@ -988,7 +1114,7 @@ export function Home({
                   >
                     All Categories
                   </button>
-                  {categories.map((cat) => (
+                  {filterCategoryOptions.map((cat) => (
                     <button
                       key={cat.id}
                       type="button"
@@ -999,7 +1125,13 @@ export function Home({
                           : 'bg-white/[0.05] text-[#C8CFD5] hover:bg-white/10'
                       }`}
                     >
-                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: cat.color }} />
+                      <span
+                        className="h-2 w-2 rounded-full"
+                        style={{
+                          backgroundColor: cat.color,
+                          boxShadow: `0 0 8px ${cat.color}88`,
+                        }}
+                      />
                       {cat.name}
                     </button>
                   ))}
